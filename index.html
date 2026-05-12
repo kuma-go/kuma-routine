@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KUMA routine</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="ad-slot" aria-label="advertisement">
+        <span>AD</span>
+        <!-- Replace this placeholder with your Google AdSense unit after approval. -->
+      </section>
+
+      <section class="menu-screen" id="menuScreen" aria-label="메뉴">
+        <p class="brand">KUMA routine</p>
+        <div class="tutorial-card" aria-label="사용 안내">
+          <div class="menu-control">
+            <strong>DAY 변경</strong>
+            <div class="swipe-hint" aria-hidden="true">
+              <i></i>
+              <span></span>
+            </div>
+            <span id="menuDayLabel">손가락으로 좌우 스와이프</span>
+          </div>
+          <div class="menu-time">
+            <span>정오 표시</span>
+            <small>오전(AM)<br>오후(PM)</small>
+            <i></i>
+            <span>현재 시간</span>
+            <b id="menuNow">1:15</b>
+          </div>
+        </div>
+        <div class="menu-actions">
+          <button id="menuShare" type="button">루틴 공유하기</button>
+          <button id="menuAdd" type="button">루틴 추가하기</button>
+          <button id="exportRoutines" type="button">파일로 저장</button>
+          <button id="importRoutines" type="button">불러오기</button>
+          <button class="start-button" id="openDay" type="button">시작하기</button>
+        </div>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </section>
+
+      <section class="day-screen" id="dayScreen" aria-label="요일별 루틴 화면" hidden>
+        <header class="day-header">
+          <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴">
+            <span aria-hidden="true"></span>
+          </button>
+          <h1 id="dayTitle">월 MON</h1>
+          <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가">
+            <span aria-hidden="true">+</span>
+          </button>
+        </header>
+        <div class="day-actions">
+          <button id="goToday" type="button">오늘로</button>
+          <button id="resetDemo" type="button">예시</button>
+        </div>
+        <section class="day-scroller" id="dayScroller" aria-label="요일별 루틴" tabindex="0"></section>
+      </section>
+    </main>
+
+    <dialog id="routineDialog">
+      <form method="dialog" class="routine-form" id="routineForm">
+        <header>
+          <h2 id="dialogTitle">루틴 등록/수정</h2>
+          <button class="plain-icon" value="cancel" type="submit" formnovalidate aria-label="닫기">x</button>
+        </header>
+
+        <input id="routineId" type="hidden">
+        <div class="modal-day-switcher">
+          <button class="icon-button" id="modalPrevDay" type="button" aria-label="이전 요일">
+            <span aria-hidden="true">&#8249;</span>
+          </button>
+          <strong id="modalDayLabel">월 MON</strong>
+          <button class="icon-button" id="modalNextDay" type="button" aria-label="다음 요일">
+            <span aria-hidden="true">&#8250;</span>
+          </button>
+        </div>
+        <input id="dayInput" type="hidden">
+        <div class="time-grid">
+          <label>
+            시작시간
+            <input id="startInput" type="time" step="300" required>
+          </label>
+          <label>
+            종료시간
+            <input id="endInput" type="time" step="300" required>
+          </label>
+        </div>
+        <label>
+          내용
+          <input id="titleInput" type="text" maxlength="24" placeholder="예: 학교" required>
+        </label>
+        <label>
+          색상
+          <input id="colorInput" type="color" value="#4f8da3">
+        </label>
+
+        <footer>
+          <button class="danger-button" id="deleteRoutine" value="delete" type="button">삭제</button>
+          <button class="cancel-button" value="cancel" type="submit" formnovalidate>취소</button>
+          <button class="save-button" id="saveRoutine" value="default" type="submit">저장</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
