@@ -24,6 +24,7 @@
 html,
 body {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -88,42 +89,74 @@ button {
 }
 
 .tutorial-card {
+  position: relative;
   width: min(100%, 400px);
-  min-height: clamp(500px, 78vh, 600px);
+  aspect-ratio: 2 / 3;
+  min-height: 0;
   margin: 0 auto;
-  padding: clamp(58px, 10vh, 92px) clamp(28px, 8vw, 50px) clamp(50px, 8vh, 70px);
+  padding: 0;
+  border: 0;
   border-radius: clamp(28px, 9vw, 40px);
   background: #1d1d1d url("./tip.svg") center / 100% 100% no-repeat;
-  display: grid;
-  align-content: start;
-  gap: 82px;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  appearance: none;
+}
+
+.tutorial-card:focus-visible {
+  outline: 4px solid rgba(40, 244, 241, 0.7);
+  outline-offset: 6px;
 }
 
 .menu-control {
-  display: grid;
-  gap: 128px;
-  justify-items: center;
+  position: absolute;
+  inset: 0;
   font-size: clamp(1.25rem, 4vw, 1.85rem);
   font-weight: 800;
 }
 
+.menu-control strong,
+.menu-control > span,
+.menu-time > span,
+.menu-time small,
+.menu-time b {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 86%;
+  text-align: center;
+}
+
+.menu-control strong {
+  top: 13.6%;
+}
+
 .menu-control > span {
+  top: 38.5%;
   color: var(--accent-dim);
   font-size: clamp(0.95rem, 3.3vw, 1.1rem);
   font-weight: 500;
 }
 
 .menu-time {
-  position: relative;
-  display: grid;
-  gap: 18px;
-  justify-items: center;
-  padding: 0 0 66px;
+  position: absolute;
+  inset: 0;
+  padding: 0;
   font-size: clamp(1.25rem, 4.5vw, 2rem);
   font-weight: 800;
 }
 
+.menu-time > span:first-child {
+  top: 44.8%;
+}
+
+.menu-time > span:nth-of-type(2) {
+  top: 71.5%;
+}
+
 .menu-time small {
+  top: 52%;
   color: var(--muted);
   font-size: clamp(0.95rem, 3.6vw, 1.35rem);
   line-height: 1.15;
@@ -147,10 +180,9 @@ button {
 }
 
 .menu-time b {
-  position: absolute;
-  bottom: 0;
+  top: 84.3%;
   color: var(--now);
-  font-size: clamp(2rem, 8vw, 3.4rem);
+  font-size: clamp(2rem, 8vw, 3.15rem);
   line-height: 1;
 }
 
@@ -437,7 +469,11 @@ button {
 }
 
 dialog {
-  width: min(calc(100vw - calc(var(--page-x) * 2)), 600px);
+  width: min(calc(100dvw - 28px), 520px);
+  max-width: calc(100dvw - 28px);
+  max-height: min(86vh, 760px);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
   border: 0;
   border-radius: 18px;
   padding: 0;
@@ -454,7 +490,14 @@ dialog::backdrop {
 .routine-form {
   display: grid;
   gap: clamp(14px, 4vw, 18px);
-  padding: clamp(20px, 5vw, 32px);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: clamp(18px, 4.5vw, 28px);
+}
+
+.routine-form * {
+  min-width: 0;
 }
 
 .routine-form header,
@@ -483,25 +526,38 @@ dialog::backdrop {
 }
 
 .modal-day-switcher strong {
+  flex: 1 1 auto;
+  max-width: calc(100% - 128px);
+  text-align: center;
   font-size: clamp(1.45rem, 5vw, 2.2rem);
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .routine-form label {
   display: grid;
   gap: 8px;
   color: var(--muted);
+  font-size: clamp(1rem, 4vw, 1.35rem);
   font-weight: 700;
 }
 
 .routine-form input {
   width: 100%;
-  min-height: 52px;
+  inline-size: 100%;
+  max-width: 100%;
+  min-height: clamp(50px, 11vw, 58px);
   border: 2px solid #363744;
   border-radius: 10px;
   padding: 0 14px;
   background: #22232b;
   color: var(--text);
+  font-size: clamp(1rem, 4vw, 1.35rem);
+}
+
+.routine-form input[type="color"] {
+  height: 64px;
+  padding: 8px;
 }
 
 .time-grid {
@@ -519,34 +575,45 @@ dialog::backdrop {
 }
 
 .routine-form footer {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.35fr;
-  gap: 10px;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   margin-top: 6px;
+  min-width: 0;
 }
 
 .routine-form footer button {
-  width: 100%;
+  min-width: 0;
   min-height: 50px;
   border-radius: 8px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 2px solid transparent;
+  font-size: clamp(0.98rem, 3.8vw, 1.18rem);
   font-weight: 800;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .danger-button {
+  flex: 0 0 clamp(74px, 20vw, 88px);
+  margin-right: auto;
   background: transparent;
   border-color: var(--danger) !important;
   color: #c98270;
 }
 
+.danger-button[hidden] {
+  display: none;
+}
+
 .cancel-button {
+  flex: 0 0 clamp(76px, 21vw, 96px);
   background: #2a2b33;
   color: var(--text);
 }
 
 .save-button {
-  min-width: clamp(140px, 36vw, 220px);
+  flex: 1 1 clamp(118px, 38vw, 220px);
   background: var(--accent-dim);
   color: #081114;
 }
@@ -561,12 +628,21 @@ dialog::backdrop {
     grid-template-columns: 50px 1fr 50px;
   }
 
+  .routine-form {
+    padding: 16px;
+  }
+
   .time-grid {
     grid-template-columns: 1fr;
   }
 
   .modal-day-switcher strong {
-    font-size: clamp(1.25rem, 6vw, 1.75rem);
+    max-width: calc(100% - 112px);
+    font-size: clamp(1.25rem, 5.8vw, 1.75rem);
+  }
+
+  .routine-form footer {
+    gap: 8px;
   }
 
   .routine-block {

@@ -660,6 +660,12 @@ async function shareAll(trigger = $("#menuShare")) {
 }
 
 $("#openDay").addEventListener("click", () => setScreen("day"));
+$("#tutorialStart").addEventListener("click", () => setScreen("day"));
+$("#tutorialStart").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  setScreen("day");
+});
 $("#backToMenu").addEventListener("click", () => setScreen("menu"));
 $("#menuAdd").addEventListener("click", () => openEditor());
 $("#addRoutine").addEventListener("click", () => openEditor());
