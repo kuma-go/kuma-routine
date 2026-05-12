@@ -10,7 +10,7 @@ const DAYS = [
 
 const STORAGE_KEY = "kuma-routine.v5";
 const SLIDES = [DAYS[6], ...DAYS, DAYS[0]];
-const HOUR_HEIGHT = () => Math.min(100, Math.max(84, window.innerWidth * 0.104));
+const HOUR_HEIGHT = () => Math.min(100, Math.max(70, window.innerWidth * 0.19));
 const $ = (selector) => document.querySelector(selector);
 
 const emptyRoutines = () => DAYS.reduce((acc, day) => {
@@ -51,6 +51,8 @@ let mouseDrag = null;
 const menuScreen = $("#menuScreen");
 const dayScreen = $("#dayScreen");
 const scroller = $("#dayScroller");
+const dayTitleWindow = $(".day-title-window");
+const dayTitleTrack = $("#dayTitleTrack");
 const dialog = $("#routineDialog");
 const form = $("#routineForm");
 
@@ -149,6 +151,7 @@ function getGaps(dayKey) {
 
 function render() {
   scroller.innerHTML = "";
+  renderDayTitleTrack();
 
   SLIDES.forEach((day, slideIndex) => {
     const slide = document.createElement("article");
@@ -248,6 +251,17 @@ function render() {
   requestAnimationFrame(() => goToDay(activeDayIndex, false));
 }
 
+function renderDayTitleTrack() {
+  dayTitleTrack.innerHTML = "";
+  SLIDES.forEach((day) => {
+    const title = document.createElement("span");
+    title.className = "day-title-item";
+    title.textContent = `${day.ko} ${day.en}`;
+    dayTitleTrack.append(title);
+  });
+  syncDayTitleTrack();
+}
+
 function createRoutineBlock(dayKey, routine) {
   const start = toMinutes(routine.start);
   const end = toMinutes(routine.end);
@@ -328,7 +342,7 @@ function applySelectionState() {
 
 function updateLabels() {
   const day = activeDay();
-  $("#dayTitle").textContent = `${day.ko} ${day.en}`;
+  dayTitleWindow.setAttribute("aria-label", `${day.ko} ${day.en}`);
   $("#menuDayLabel").textContent = "손가락으로 좌우 스와이프";
   $("#menuNow").textContent = displayTime(toTime(currentMinutes()));
 }
@@ -345,6 +359,7 @@ function goToDay(index, smooth = true) {
   const width = scroller.clientWidth;
   scroller.scrollTo({ left: width * (activeDayIndex + 1), behavior: smooth ? "smooth" : "auto" });
   updateLabels();
+  if (!smooth) requestAnimationFrame(syncDayTitleTrack);
 }
 
 function settleInfiniteScroll() {
@@ -362,11 +377,22 @@ function settleInfiniteScroll() {
     activeDayIndex = slideIndex - 1;
   }
   updateLabels();
+  requestAnimationFrame(syncDayTitleTrack);
 }
 
 function handleDayScroll() {
+  syncDayTitleTrack();
   window.clearTimeout(scrollSettleTimer);
   scrollSettleTimer = window.setTimeout(settleInfiniteScroll, 90);
+}
+
+function syncDayTitleTrack() {
+  const slideWidth = scroller.clientWidth;
+  const titleWidth = dayTitleWindow.clientWidth;
+  if (!slideWidth || !titleWidth) return;
+  const progress = scroller.scrollLeft / slideWidth;
+  dayTitleTrack.style.transform = `translate3d(${-progress * titleWidth}px, 0, 0)`;
+  dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
 }
 
 function rememberPointerStart(event) {
@@ -461,6 +487,7 @@ function openEditor(dayKey = activeDay().key, routine = null, defaults = {}) {
   $("#deleteRoutine").hidden = !routine;
   $("#dialogTitle").textContent = routine ? "루틴 수정" : "루틴 등록";
   modalDayLabel();
+  document.body.classList.add("modal-open");
   dialog.showModal();
   $("#titleInput").focus();
 }
@@ -616,6 +643,12 @@ scroller.addEventListener("pointerdown", rememberPointerStart, { capture: true }
 scroller.addEventListener("pointermove", trackPointerMove, { capture: true });
 scroller.addEventListener("pointerup", clearPointerMoveSoon, { capture: true });
 scroller.addEventListener("pointercancel", clearPointerMoveSoon, { capture: true });
+dialog.addEventListener("click", (event) => {
+  if (event.target === dialog) dialog.close("cancel");
+});
+dialog.addEventListener("close", () => {
+  document.body.classList.remove("modal-open");
+});
 
 form.addEventListener("submit", (event) => {
   if (event.submitter?.value === "cancel") return;

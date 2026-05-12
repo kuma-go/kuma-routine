@@ -43,18 +43,22 @@
       </section>
 
       <section class="day-screen" id="dayScreen" aria-label="요일별 루틴 화면" hidden>
-        <header class="day-header">
-          <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴">
-            <span aria-hidden="true"></span>
-          </button>
-          <h1 id="dayTitle">월 MON</h1>
-          <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가">
-            <span aria-hidden="true">+</span>
-          </button>
-        </header>
-        <div class="day-actions">
-          <button id="goToday" type="button">오늘로</button>
-          <button id="resetDemo" type="button">예시</button>
+        <div class="day-topbar">
+          <header class="day-header">
+            <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴">
+              <span aria-hidden="true"></span>
+            </button>
+            <div class="day-title-window" aria-live="polite">
+              <div class="day-title-track" id="dayTitleTrack"></div>
+            </div>
+            <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가">
+              <span aria-hidden="true">+</span>
+            </button>
+          </header>
+          <div class="day-actions">
+            <button id="goToday" type="button">오늘로</button>
+            <button id="resetDemo" type="button">예시</button>
+          </div>
         </div>
         <section class="day-scroller" id="dayScroller" aria-label="요일별 루틴" tabindex="0"></section>
       </section>
@@ -64,7 +68,6 @@
       <form method="dialog" class="routine-form" id="routineForm">
         <header>
           <h2 id="dialogTitle">루틴 등록/수정</h2>
-          <button class="plain-icon" value="cancel" type="submit" formnovalidate aria-label="닫기">x</button>
         </header>
 
         <input id="routineId" type="hidden">

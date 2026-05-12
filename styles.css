@@ -10,9 +10,11 @@
   --accent-dim: #3d858d;
   --now: #ff5100;
   --danger: #914f3e;
-  --hour: clamp(84px, 10.4vw, 100px);
-  --gutter: clamp(64px, 15vw, 96px);
+  --hour: clamp(70px, 19vw, 100px);
+  --gutter: clamp(54px, 14vw, 96px);
   --card-left: clamp(8px, 2.6vw, 18px);
+  --page-x: clamp(38px, 11vw, 50px);
+  --ad-x: clamp(14px, 4vw, 24px);
 }
 
 * {
@@ -32,6 +34,11 @@ body {
   letter-spacing: 0;
 }
 
+body.modal-open {
+  overflow: hidden;
+  touch-action: none;
+}
+
 button,
 input {
   font: inherit;
@@ -49,11 +56,12 @@ button {
   width: min(100%, 700px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: clamp(14px, 3vw, 22px) clamp(14px, 4vw, 24px) 28px;
+  padding: 0 0 28px;
 }
 
 .ad-slot {
   display: grid;
+  margin: clamp(14px, 3vw, 22px) var(--ad-x) 0;
   min-height: clamp(88px, 19vw, 140px);
   place-items: center;
   background: #c5c5c5;
@@ -67,6 +75,7 @@ button {
   display: grid;
   align-content: start;
   gap: clamp(32px, 5vh, 56px);
+  padding-inline: var(--page-x);
   padding-top: clamp(54px, 9vh, 92px);
   text-align: center;
 }
@@ -80,10 +89,10 @@ button {
 
 .tutorial-card {
   width: min(100%, 400px);
-  min-height: 600px;
+  min-height: clamp(500px, 78vh, 600px);
   margin: 0 auto;
-  padding: 92px 50px 70px;
-  border-radius: 40px;
+  padding: clamp(58px, 10vh, 92px) clamp(28px, 8vw, 50px) clamp(50px, 8vh, 70px);
+  border-radius: clamp(28px, 9vw, 40px);
   background: #1d1d1d;
   display: grid;
   align-content: start;
@@ -105,38 +114,56 @@ button {
 }
 
 .swipe-hint {
+  position: relative;
   display: grid;
   justify-items: center;
-  gap: 0;
+  width: min(100%, 300px);
+  min-height: 118px;
   color: var(--accent-dim);
 }
 
 .swipe-hint span {
-  position: relative;
-  width: 74px;
-  height: 94px;
-  margin-top: 14px;
+  position: absolute;
+  left: 50%;
+  top: 32px;
+  width: 70px;
+  height: 78px;
   border: 6px solid var(--accent-dim);
   border-top: 0;
-  border-radius: 12px 12px 34px 34px;
-  transform: rotate(-22deg);
+  border-radius: 10px 10px 30px 30px;
+  transform: translateX(-50%) rotate(-18deg);
 }
 
 .swipe-hint span::before {
   content: "";
   position: absolute;
-  left: 8px;
-  top: -52px;
-  width: 22px;
-  height: 70px;
+  left: 14px;
+  top: -58px;
+  width: 20px;
+  height: 76px;
   border: 6px solid var(--accent-dim);
   border-radius: 999px;
   background: #131319;
 }
 
+.swipe-hint span::after {
+  content: "";
+  position: absolute;
+  right: -12px;
+  top: 18px;
+  width: 30px;
+  height: 42px;
+  border-right: 6px solid var(--accent-dim);
+  border-bottom: 6px solid var(--accent-dim);
+  border-radius: 0 0 18px 0;
+  transform: rotate(-14deg);
+}
+
 .swipe-hint i {
-  position: relative;
-  width: 300px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
   height: 4px;
   border-radius: 0;
   background: var(--accent-dim);
@@ -238,22 +265,45 @@ button {
 }
 
 .day-screen {
-  padding-top: clamp(40px, 8vw, 74px);
+  padding: 0 var(--page-x);
+}
+
+.day-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-inline: calc(var(--page-x) * -1);
+  padding: clamp(18px, 5vw, 42px) var(--page-x) 14px;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 86%, rgba(19, 19, 25, 0));
 }
 
 .day-header {
   display: grid;
-  grid-template-columns: 58px 1fr 58px;
+  grid-template-columns: clamp(44px, 10vw, 58px) minmax(0, 1fr) clamp(44px, 10vw, 58px);
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
-.day-header h1 {
-  margin: 0;
-  text-align: center;
+.day-title-window {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.day-title-track {
+  --title-width: 220px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--title-width);
+  will-change: transform;
+}
+
+.day-title-item {
+  display: grid;
+  place-items: center;
   font-size: clamp(2rem, 8vw, 3.4rem);
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .icon-button {
@@ -290,7 +340,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .day-actions button {
@@ -304,7 +354,6 @@ button {
   grid-auto-flow: column;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
   touch-action: pan-x pan-y;
   user-select: none;
@@ -329,7 +378,7 @@ button {
 .timeline {
   position: relative;
   min-height: calc(var(--hour) * 24 + 28px);
-  padding: 0 0 28px var(--gutter);
+  padding: 18px 0 28px var(--gutter);
 }
 
 .timeline::before {
@@ -365,7 +414,8 @@ button {
 .noon-label {
   position: absolute;
   left: 0;
-  top: -26px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--muted);
   font-size: clamp(0.86rem, 3.4vw, 1.15rem);
   line-height: 1.1;
@@ -464,7 +514,7 @@ button {
 }
 
 dialog {
-  width: min(calc(100vw - 28px), 600px);
+  width: min(calc(100vw - calc(var(--page-x) * 2)), 600px);
   border: 0;
   border-radius: 18px;
   padding: 0;
@@ -475,6 +525,7 @@ dialog {
 
 dialog::backdrop {
   background: rgba(0, 0, 0, 0.62);
+  touch-action: none;
 }
 
 .routine-form {
@@ -492,7 +543,7 @@ dialog::backdrop {
 }
 
 .routine-form header {
-  justify-content: space-between;
+  justify-content: center;
 }
 
 .routine-form h2 {
@@ -569,13 +620,14 @@ dialog::backdrop {
 }
 
 .save-button {
+  min-width: clamp(140px, 36vw, 220px);
   background: var(--accent-dim);
   color: #081114;
 }
 
 @media (max-width: 520px) {
   :root {
-    --gutter: 72px;
+    --gutter: clamp(54px, 15vw, 72px);
     --card-left: 8px;
   }
 
@@ -588,7 +640,7 @@ dialog::backdrop {
   }
 
   .routine-block {
-    grid-template-columns: minmax(72px, 0.48fr) 1fr;
+    grid-template-columns: minmax(64px, 0.48fr) 1fr;
   }
 
   .routine-title {
