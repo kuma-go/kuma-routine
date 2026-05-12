@@ -9,7 +9,9 @@ const DAYS = [
 ];
 
 const STORAGE_KEY = "kuma-routine.v5";
-const SLIDES = [DAYS[6], ...DAYS, DAYS[0]];
+const LOOP_WEEKS = 5;
+const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
+const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
 const HOUR_HEIGHT = () => Math.min(100, Math.max(70, window.innerWidth * 0.19));
 const $ = (selector) => document.querySelector(selector);
 
@@ -47,6 +49,8 @@ let pointerStartX = 0;
 let pointerStartY = 0;
 let pointerMoved = false;
 let mouseDrag = null;
+let lastViewportWidth = window.innerWidth;
+let renderedTodayIndex = todayIndex();
 
 const menuScreen = $("#menuScreen");
 const dayScreen = $("#dayScreen");
@@ -104,13 +108,17 @@ function displayStart(value) {
   return minute ? `${hour}:${String(minute).padStart(2, "0")}~` : `${hour}:00~`;
 }
 
-function displayTime(value) {
-  return displayStart(value).replace("~", "");
+function displayClock(includeSeconds = false) {
+  const now = new Date();
+  const hour = now.getHours() % 12 || 12;
+  const minute = String(now.getMinutes()).padStart(2, "0");
+  if (!includeSeconds) return `${hour}:${minute}`;
+  return `${hour}:${minute}:${String(now.getSeconds()).padStart(2, "0")}`;
 }
 
 function currentMinutes() {
   const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  return now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
 }
 
 function minutesToTop(minutes) {
@@ -152,6 +160,7 @@ function getGaps(dayKey) {
 function render() {
   scroller.innerHTML = "";
   renderDayTitleTrack();
+  renderedTodayIndex = todayIndex();
 
   SLIDES.forEach((day, slideIndex) => {
     const slide = document.createElement("article");
@@ -193,7 +202,7 @@ function render() {
       const nowLine = document.createElement("div");
       nowLine.className = "now-line";
       nowLine.style.top = `${minutesToTop(currentMinutes())}px`;
-      nowLine.innerHTML = `<span class="now-label">${displayTime(toTime(currentMinutes()))}</span>`;
+      nowLine.innerHTML = `<span class="now-label">${displayClock(true)}</span>`;
       timeline.append(nowLine);
     }
 
@@ -255,8 +264,9 @@ function renderDayTitleTrack() {
   dayTitleTrack.innerHTML = "";
   SLIDES.forEach((day) => {
     const title = document.createElement("span");
-    title.className = "day-title-item";
-    title.textContent = `${day.ko} ${day.en}`;
+    const isToday = day.key === DAYS[todayIndex()].key;
+    title.className = `day-title-item${isToday ? " is-today" : ""}`;
+    title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
     dayTitleTrack.append(title);
   });
   syncDayTitleTrack();
@@ -344,7 +354,20 @@ function updateLabels() {
   const day = activeDay();
   dayTitleWindow.setAttribute("aria-label", `${day.ko} ${day.en}`);
   $("#menuDayLabel").textContent = "손가락으로 좌우 스와이프";
-  $("#menuNow").textContent = displayTime(toTime(currentMinutes()));
+  $("#menuNow").textContent = displayClock(true);
+}
+
+function updateLiveTime() {
+  if (todayIndex() !== renderedTodayIndex) {
+    render();
+    return;
+  }
+
+  $("#menuNow").textContent = displayClock(true);
+  scroller.querySelectorAll(".now-line").forEach((line) => {
+    line.style.top = `${minutesToTop(currentMinutes())}px`;
+    line.querySelector(".now-label").textContent = displayClock(true);
+  });
 }
 
 function setScreen(name) {
@@ -357,7 +380,10 @@ function setScreen(name) {
 function goToDay(index, smooth = true) {
   activeDayIndex = (index + DAYS.length) % DAYS.length;
   const width = scroller.clientWidth;
-  scroller.scrollTo({ left: width * (activeDayIndex + 1), behavior: smooth ? "smooth" : "auto" });
+  const currentSlide = Math.round(scroller.scrollLeft / width);
+  const currentWeek = Number.isFinite(currentSlide) ? Math.floor(currentSlide / DAYS.length) : CENTER_WEEK;
+  const safeWeek = currentWeek <= 0 || currentWeek >= LOOP_WEEKS - 1 ? CENTER_WEEK : currentWeek;
+  scroller.scrollTo({ left: width * ((safeWeek * DAYS.length) + activeDayIndex), behavior: smooth ? "smooth" : "auto" });
   updateLabels();
   if (!smooth) requestAnimationFrame(syncDayTitleTrack);
 }
@@ -366,15 +392,15 @@ function settleInfiniteScroll() {
   const width = scroller.clientWidth;
   if (!width) return;
 
-  const slideIndex = Math.round(scroller.scrollLeft / width);
-  if (slideIndex === 0) {
-    activeDayIndex = 6;
-    scroller.scrollTo({ left: width * 7, behavior: "auto" });
-  } else if (slideIndex === SLIDES.length - 1) {
-    activeDayIndex = 0;
-    scroller.scrollTo({ left: width, behavior: "auto" });
-  } else if (slideIndex >= 1 && slideIndex <= 7) {
-    activeDayIndex = slideIndex - 1;
+  let slideIndex = Math.round(scroller.scrollLeft / width);
+  activeDayIndex = ((slideIndex % DAYS.length) + DAYS.length) % DAYS.length;
+
+  if (slideIndex < DAYS.length) {
+    slideIndex += DAYS.length * (CENTER_WEEK - Math.floor(slideIndex / DAYS.length));
+    scroller.scrollTo({ left: width * slideIndex, behavior: "auto" });
+  } else if (slideIndex >= DAYS.length * (LOOP_WEEKS - 1)) {
+    slideIndex -= DAYS.length * (Math.floor(slideIndex / DAYS.length) - CENTER_WEEK);
+    scroller.scrollTo({ left: width * slideIndex, behavior: "auto" });
   }
   updateLabels();
   requestAnimationFrame(syncDayTitleTrack);
@@ -461,7 +487,26 @@ function finishMouseDrag() {
 
 function showToday() {
   setScreen("day");
-  goToDay(todayIndex());
+  goToDay(todayIndex(), true);
+  window.setTimeout(scrollToCurrentTime, 260);
+}
+
+function scrollToCurrentTime() {
+  const slide = currentSlideElement();
+  const line = slide?.querySelector(".now-line");
+  if (!line) return;
+
+  const topbarHeight = $(".day-topbar").getBoundingClientRect().height;
+  const rect = line.getBoundingClientRect();
+  const target = window.scrollY + rect.top - topbarHeight - 36;
+  window.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+}
+
+function currentSlideElement() {
+  const width = scroller.clientWidth;
+  if (!width) return null;
+  const slideIndex = Math.round(scroller.scrollLeft / width);
+  return scroller.children[slideIndex] ?? null;
 }
 
 function modalDayLabel() {
@@ -656,11 +701,19 @@ form.addEventListener("submit", (event) => {
   if (upsertRoutine()) dialog.close();
 });
 
-window.addEventListener("resize", render);
-window.setInterval(() => {
-  updateLabels();
+window.addEventListener("resize", () => {
+  const nextWidth = window.innerWidth;
+  if (Math.abs(nextWidth - lastViewportWidth) < 2) {
+    syncDayTitleTrack();
+    return;
+  }
+
+  const scrollY = window.scrollY;
+  lastViewportWidth = nextWidth;
   render();
-}, 60 * 1000);
+  requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+});
+window.setInterval(updateLiveTime, 1000);
 
 render();
 setScreen("menu");
