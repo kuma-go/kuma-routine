@@ -427,7 +427,8 @@ function syncDayTitleTrack() {
   const titleWidth = dayTitleWindow.clientWidth;
   if (!stride || !titleWidth) return;
   const progress = scroller.scrollLeft / stride;
-  dayTitleTrack.style.transform = `translate3d(${-progress * titleWidth}px, 0, 0)`;
+  const titleStride = titleWidth + slideGap();
+  dayTitleTrack.style.transform = `translate3d(${-progress * titleStride}px, 0, 0)`;
   dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
 }
 
