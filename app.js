@@ -125,6 +125,14 @@ function minutesToTop(minutes) {
   return (minutes / 60) * HOUR_HEIGHT();
 }
 
+function slideGap() {
+  return parseFloat(getComputedStyle(scroller).getPropertyValue("--slide-gap")) || 0;
+}
+
+function slideStride() {
+  return scroller.clientWidth + slideGap();
+}
+
 function gapVisualHeight(minutes) {
   return Math.max(50, minutesToTop(minutes));
 }
@@ -379,28 +387,30 @@ function setScreen(name) {
 
 function goToDay(index, smooth = true) {
   activeDayIndex = (index + DAYS.length) % DAYS.length;
-  const width = scroller.clientWidth;
-  const currentSlide = Math.round(scroller.scrollLeft / width);
+  const stride = slideStride();
+  if (!stride) return;
+
+  const currentSlide = Math.round(scroller.scrollLeft / stride);
   const currentWeek = Number.isFinite(currentSlide) ? Math.floor(currentSlide / DAYS.length) : CENTER_WEEK;
   const safeWeek = currentWeek <= 0 || currentWeek >= LOOP_WEEKS - 1 ? CENTER_WEEK : currentWeek;
-  scroller.scrollTo({ left: width * ((safeWeek * DAYS.length) + activeDayIndex), behavior: smooth ? "smooth" : "auto" });
+  scroller.scrollTo({ left: stride * ((safeWeek * DAYS.length) + activeDayIndex), behavior: smooth ? "smooth" : "auto" });
   updateLabels();
   if (!smooth) requestAnimationFrame(syncDayTitleTrack);
 }
 
 function settleInfiniteScroll() {
-  const width = scroller.clientWidth;
-  if (!width) return;
+  const stride = slideStride();
+  if (!stride) return;
 
-  let slideIndex = Math.round(scroller.scrollLeft / width);
+  let slideIndex = Math.round(scroller.scrollLeft / stride);
   activeDayIndex = ((slideIndex % DAYS.length) + DAYS.length) % DAYS.length;
 
   if (slideIndex < DAYS.length) {
     slideIndex += DAYS.length * (CENTER_WEEK - Math.floor(slideIndex / DAYS.length));
-    scroller.scrollTo({ left: width * slideIndex, behavior: "auto" });
+    scroller.scrollTo({ left: stride * slideIndex, behavior: "auto" });
   } else if (slideIndex >= DAYS.length * (LOOP_WEEKS - 1)) {
     slideIndex -= DAYS.length * (Math.floor(slideIndex / DAYS.length) - CENTER_WEEK);
-    scroller.scrollTo({ left: width * slideIndex, behavior: "auto" });
+    scroller.scrollTo({ left: stride * slideIndex, behavior: "auto" });
   }
   updateLabels();
   requestAnimationFrame(syncDayTitleTrack);
@@ -413,10 +423,10 @@ function handleDayScroll() {
 }
 
 function syncDayTitleTrack() {
-  const slideWidth = scroller.clientWidth;
+  const stride = slideStride();
   const titleWidth = dayTitleWindow.clientWidth;
-  if (!slideWidth || !titleWidth) return;
-  const progress = scroller.scrollLeft / slideWidth;
+  if (!stride || !titleWidth) return;
+  const progress = scroller.scrollLeft / stride;
   dayTitleTrack.style.transform = `translate3d(${-progress * titleWidth}px, 0, 0)`;
   dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
 }
@@ -479,9 +489,9 @@ function finishMouseDrag() {
   scroller.releasePointerCapture?.(pointerId);
 
   if (!shouldSnap) return;
-  const width = scroller.clientWidth;
-  const targetSlide = Math.round(scroller.scrollLeft / width);
-  scroller.scrollTo({ left: targetSlide * width, behavior: "smooth" });
+  const stride = slideStride();
+  const targetSlide = Math.round(scroller.scrollLeft / stride);
+  scroller.scrollTo({ left: targetSlide * stride, behavior: "smooth" });
   window.setTimeout(settleInfiniteScroll, 180);
 }
 
@@ -503,9 +513,9 @@ function scrollToCurrentTime() {
 }
 
 function currentSlideElement() {
-  const width = scroller.clientWidth;
-  if (!width) return null;
-  const slideIndex = Math.round(scroller.scrollLeft / width);
+  const stride = slideStride();
+  if (!stride) return null;
+  const slideIndex = Math.round(scroller.scrollLeft / stride);
   return scroller.children[slideIndex] ?? null;
 }
 
