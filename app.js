@@ -269,15 +269,17 @@ function render() {
 }
 
 function renderDayTitleTrack() {
+  updateDayTitle();
+}
+
+function updateDayTitle() {
+  const day = activeDay();
+  const isToday = day.key === DAYS[todayIndex()].key;
   dayTitleTrack.innerHTML = "";
-  SLIDES.forEach((day) => {
-    const title = document.createElement("span");
-    const isToday = day.key === DAYS[todayIndex()].key;
-    title.className = `day-title-item${isToday ? " is-today" : ""}`;
-    title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
-    dayTitleTrack.append(title);
-  });
-  syncDayTitleTrack();
+  const title = document.createElement("span");
+  title.className = `day-title-item${isToday ? " is-today" : ""}`;
+  title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
+  dayTitleTrack.append(title);
 }
 
 function createRoutineBlock(dayKey, routine) {
@@ -361,6 +363,7 @@ function applySelectionState() {
 function updateLabels() {
   const day = activeDay();
   dayTitleWindow.setAttribute("aria-label", `${day.ko} ${day.en}`);
+  updateDayTitle();
   $("#menuDayLabel").textContent = "손가락으로 좌우 스와이프";
   $("#menuNow").textContent = displayClock(true);
 }
@@ -423,12 +426,9 @@ function handleDayScroll() {
 }
 
 function syncDayTitleTrack() {
-  const stride = slideStride();
   const titleWidth = dayTitleWindow.clientWidth;
-  if (!stride || !titleWidth) return;
-  const progress = scroller.scrollLeft / stride;
-  const titleStride = titleWidth + slideGap();
-  dayTitleTrack.style.transform = `translate3d(${-progress * titleStride}px, 0, 0)`;
+  if (!titleWidth) return;
+  dayTitleTrack.style.transform = "";
   dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
 }
 

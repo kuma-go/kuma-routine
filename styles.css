@@ -76,7 +76,7 @@ button:active,
 [role="button"]:active {
   transform: translateY(2px) scale(0.965);
   filter: brightness(1.12);
-  box-shadow: 0 0 0 5px rgba(61, 133, 141, 0.18);
+  box-shadow: 0 0 0 5px rgba(61, 133, 141, 0.22);
 }
 
 [hidden] {
@@ -241,6 +241,13 @@ button:active,
   font-weight: 750;
 }
 
+.menu-actions button:active,
+.day-actions button:active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: #071113;
+}
+
 .menu-actions button {
   width: min(100%, 466px);
 }
@@ -271,6 +278,7 @@ button:active,
 }
 
 .day-header {
+  position: relative;
   display: grid;
   grid-template-columns: clamp(44px, 10vw, 58px) minmax(0, 1fr) clamp(44px, 10vw, 58px);
   align-items: center;
@@ -279,23 +287,26 @@ button:active,
 }
 
 .day-title-window {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--gutter) + var(--card-left) + var(--slide-gap));
+  right: 0;
+  z-index: 0;
   overflow: hidden;
   min-width: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .day-title-track {
   --title-width: 220px;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: var(--title-width);
-  column-gap: var(--slide-gap);
-  will-change: transform;
+  display: block;
 }
 
 .day-title-item {
   display: grid;
   place-items: center;
-  font-size: clamp(2rem, 8vw, 3.4rem);
+  font-size: clamp(1.8rem, 7.2vw, 3.25rem);
   font-weight: 850;
   white-space: nowrap;
 }
@@ -305,6 +316,8 @@ button:active,
 }
 
 .icon-button {
+  position: relative;
+  z-index: 1;
   display: grid;
   width: clamp(44px, 10vw, 58px);
   aspect-ratio: 1;
@@ -315,8 +328,19 @@ button:active,
   color: var(--accent-dim);
 }
 
+.menu-button {
+  grid-column: 1;
+}
+
+.add-button {
+  grid-column: 3;
+}
+
 .icon-button:active {
   transform: translateY(2px) scale(0.9);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: #071113;
   box-shadow: 0 0 0 6px rgba(40, 244, 241, 0.14);
 }
 
@@ -698,6 +722,20 @@ dialog::backdrop {
   flex: 1 1 clamp(118px, 38vw, 220px);
   background: var(--accent-dim);
   color: #081114;
+}
+
+.save-button:active {
+  background: var(--accent);
+}
+
+.cancel-button:active {
+  background: #3a3b45;
+  color: #fff;
+}
+
+.danger-button:active {
+  background: var(--danger);
+  color: #fff;
 }
 
 @keyframes screen-enter {
