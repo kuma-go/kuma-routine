@@ -59,6 +59,7 @@ const dayTitleWindow = $(".day-title-window");
 const dayTitleTrack = $("#dayTitleTrack");
 const dialog = $("#routineDialog");
 const form = $("#routineForm");
+const contactDialog = $("#contactDialog");
 
 function loadRoutines() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -782,6 +783,10 @@ $("#goToday").addEventListener("click", showToday);
 $("#menuShare").addEventListener("click", (event) => shareAll(event.currentTarget).catch(() => alert("공유를 완료하지 못했습니다.")));
 $("#exportRoutines").addEventListener("click", exportRoutineFile);
 $("#importRoutines").addEventListener("click", () => $("#importFile").click());
+$("#creatorContact").addEventListener("click", () => {
+  document.body.classList.add("modal-open");
+  contactDialog.showModal();
+});
 $("#importFile").addEventListener("change", (event) => {
   importRoutineFile(event.target.files?.[0]);
   event.target.value = "";
@@ -818,6 +823,15 @@ dialog.addEventListener("click", (event) => {
 });
 dialog.addEventListener("close", () => {
   document.body.classList.remove("modal-open");
+});
+contactDialog.addEventListener("click", (event) => {
+  if (event.target === contactDialog) contactDialog.close("cancel");
+});
+contactDialog.addEventListener("close", () => {
+  document.body.classList.remove("modal-open");
+});
+$("#contactMail").addEventListener("click", () => {
+  contactDialog.close("mail");
 });
 
 form.addEventListener("submit", (event) => {

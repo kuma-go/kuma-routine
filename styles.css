@@ -104,6 +104,7 @@ button:active,
 .menu-screen {
   min-height: calc(100vh - clamp(88px, 19vw, 140px) - 44px);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: clamp(32px, 5vh, 56px);
   padding-inline: var(--page-x);
@@ -235,17 +236,27 @@ button:active,
   line-height: 1;
 }
 
+.menu-action-area {
+  display: grid;
+  gap: 14px;
+  justify-self: center;
+  width: 600px;
+  max-width: calc(100vw - 100px);
+}
+
 .menu-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   justify-items: center;
-  width: min(100%, 470px);
+  justify-self: stretch;
+  width: 100%;
   margin-inline: auto;
 }
 
 .menu-actions button,
 .menu-actions .menu-link-button,
+.menu-action-area > .start-button,
 .day-actions button {
   text-decoration: none;
   min-height: 56px;
@@ -259,9 +270,11 @@ button:active,
 
 .menu-actions button:active,
 .menu-actions .menu-link-button:active,
+.menu-action-area > .start-button:active,
 .day-actions button:active,
 .menu-actions button.is-pressed,
 .menu-actions .menu-link-button.is-pressed,
+.menu-action-area > .start-button.is-pressed,
 .day-actions button.is-pressed {
   background-image: url("./btn_m_click.svg");
   color: #071113;
@@ -305,22 +318,25 @@ button:active,
   color: #ffb6a9;
 }
 
-.menu-actions .start-button {
-  grid-column: 1 / -1;
+.menu-action-area > .start-button {
+  width: 600px;
+  max-width: 100%;
   margin-top: 28px;
   min-height: clamp(88px, 18vw, 108px);
-  background-image: url("./btn_m_click.svg");
+  border: 4px solid var(--accent-dim);
+  border-radius: 14px;
+  background: #245d64;
   color: #fff;
   font-size: clamp(1.65rem, 6vw, 2.7rem);
 }
 
-.menu-actions .start-button:active {
-  background-image: url("./btn_m_normal.svg");
+.menu-action-area > .start-button:active {
+  background: #1f282c;
   color: var(--accent-dim);
 }
 
-.menu-actions .start-button.is-pressed {
-  background-image: url("./btn_m_normal.svg");
+.menu-action-area > .start-button.is-pressed {
+  background: #1f282c;
   color: var(--accent-dim);
 }
 
@@ -426,8 +442,8 @@ button:active,
 
 .day-actions {
   display: grid;
-  grid-template-columns: minmax(min(100%, 230px), min(100%, 470px));
-  justify-content: center;
+  grid-template-columns: 1fr;
+  width: 100%;
   gap: 10px;
   margin-bottom: 0;
 }
@@ -436,9 +452,19 @@ button:active,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   gap: 8px;
+  border: 4px solid var(--accent-dim);
+  border-radius: 12px;
+  background: #1f282c;
   min-height: clamp(54px, 12vw, 68px);
   font-size: clamp(1.1rem, 4vw, 1.45rem);
+}
+
+.day-actions button:active,
+.day-actions button.is-pressed {
+  background: #245d64;
+  color: #fff;
 }
 
 .day-actions button img {
@@ -701,7 +727,8 @@ dialog::backdrop {
   touch-action: none;
 }
 
-.routine-form {
+.routine-form,
+.contact-form {
   display: grid;
   gap: clamp(14px, 4vw, 18px);
   width: 100%;
@@ -710,23 +737,28 @@ dialog::backdrop {
   padding: clamp(18px, 4.5vw, 28px);
 }
 
-.routine-form * {
+.routine-form *,
+.contact-form * {
   min-width: 0;
 }
 
 .routine-form header,
 .routine-form footer,
+.contact-form header,
+.contact-form footer,
 .modal-day-switcher {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.routine-form header {
+.routine-form header,
+.contact-form header {
   justify-content: center;
 }
 
-.routine-form h2 {
+.routine-form h2,
+.contact-form h2 {
   margin: 0;
   color: var(--accent);
   font-size: clamp(1.35rem, 5vw, 2rem);
@@ -777,6 +809,48 @@ dialog::backdrop {
   padding: 8px;
 }
 
+.contact-symbol {
+  display: grid;
+  place-items: center;
+  width: clamp(58px, 16vw, 82px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: rgba(40, 244, 241, 0.08);
+}
+
+.contact-symbol img {
+  width: 62%;
+  height: auto;
+}
+
+.contact-info {
+  display: grid;
+  gap: 10px;
+  padding: clamp(14px, 4vw, 18px);
+  border: 2px solid #363744;
+  border-radius: 12px;
+  background: #22232b;
+}
+
+.contact-info p {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.42fr) 1fr;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(0.98rem, 3.8vw, 1.2rem);
+  font-weight: 700;
+  text-align: left;
+}
+
+.contact-info strong {
+  color: var(--text);
+  font-weight: 800;
+  word-break: break-word;
+}
+
 .alarm-toggle {
   display: flex !important;
   align-items: center;
@@ -821,7 +895,8 @@ dialog::backdrop {
   color: var(--muted);
 }
 
-.routine-form footer {
+.routine-form footer,
+.contact-form footer {
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -829,7 +904,9 @@ dialog::backdrop {
   min-width: 0;
 }
 
-.routine-form footer button {
+.routine-form footer button,
+.contact-form footer button,
+.contact-mail-button {
   min-width: 0;
   min-height: 50px;
   border-radius: 8px;
@@ -839,6 +916,28 @@ dialog::backdrop {
   font-weight: 800;
   white-space: nowrap;
   word-break: keep-all;
+}
+
+.contact-mail-button {
+  display: grid;
+  flex: 1 1 auto;
+  place-items: center;
+  text-decoration: none;
+  background: var(--accent-dim);
+  color: #081114;
+  transition:
+    transform 150ms cubic-bezier(0.2, 0.85, 0.25, 1),
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    filter 150ms ease;
+}
+
+.contact-mail-button:active,
+.contact-mail-button.is-pressed {
+  background: var(--accent);
+  filter: brightness(1.12);
+  transform: translateY(2px) scale(0.965);
 }
 
 .danger-button {
@@ -936,7 +1035,8 @@ dialog::backdrop {
     grid-template-columns: 50px 1fr 50px;
   }
 
-  .routine-form {
+  .routine-form,
+  .contact-form {
     padding: 16px;
   }
 

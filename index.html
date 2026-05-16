@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>KUMA routine</title>
-    <link rel="stylesheet" href="./styles.css?v=20260517-01">
+    <link rel="stylesheet" href="./styles.css?v=20260517-10">
   </head>
   <body>
     <main class="app-shell">
@@ -31,13 +31,15 @@
             <b id="menuNow">1:15</b>
           </div>
         </div>
-        <div class="menu-actions">
-          <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span>공유하기</span></button>
-          <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span>저장하기</span></button>
-          <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>불러오기</span></button>
-          <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span>초기화</span></button>
-          <button id="resetDemo" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>예시</span></button>
-          <a class="menu-link-button" id="creatorContact" href="mailto:carksk@naver.com?subject=KUMA%20routine%20문의&body=제작자%20고슬기%0AEmail%3A%20carksk%40naver.com%0AKakao%20ID%3A%20carksk2%0A%0A문의내용%3A%20"><img src="./Icon_Smile.svg" alt="" aria-hidden="true"><span>제작자/문의</span></a>
+        <div class="menu-action-area">
+          <div class="menu-actions">
+            <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span>공유하기</span></button>
+            <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span>저장하기</span></button>
+            <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>불러오기</span></button>
+            <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span>초기화</span></button>
+            <button id="resetDemo" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>예시</span></button>
+            <button class="menu-link-button" id="creatorContact" type="button"><img src="./Icon_Smile.svg" alt="" aria-hidden="true"><span>제작자/문의</span></button>
+          </div>
           <button class="start-button" id="openDay" type="button">시작하기</button>
         </div>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
@@ -112,6 +114,29 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260517-01"></script>
+    <dialog id="contactDialog">
+      <form method="dialog" class="contact-form" id="contactForm">
+        <header>
+          <h2>제작자/문의</h2>
+        </header>
+
+        <div class="contact-symbol" aria-hidden="true">
+          <img src="./Icon_Smile.svg" alt="">
+        </div>
+
+        <div class="contact-info">
+          <p><span>제작자</span><strong>고슬기</strong></p>
+          <p><span>Email</span><strong>carksk@naver.com</strong></p>
+          <p><span>Kakao ID</span><strong>carksk2</strong></p>
+        </div>
+
+        <footer>
+          <button class="cancel-button" value="cancel" type="submit">닫기</button>
+          <a class="contact-mail-button" id="contactMail" href="mailto:carksk@naver.com?subject=KUMA%20routine%20문의&body=제작자%20고슬기%0AEmail%3A%20carksk%40naver.com%0AKakao%20ID%3A%20carksk2%0A%0A문의내용%3A%20">메일 보내기</a>
+        </footer>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=20260517-10"></script>
   </body>
 </html>
