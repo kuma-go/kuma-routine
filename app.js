@@ -22,12 +22,12 @@ const emptyRoutines = () => DAYS.reduce((acc, day) => {
 
 const demoRoutines = {
   mon: [
-    { id: crypto.randomUUID(), start: "07:00", end: "08:00", title: "기상", color: "#5c3620" },
-    { id: crypto.randomUUID(), start: "08:00", end: "13:00", title: "학교", color: "#3c362e" },
-    { id: crypto.randomUUID(), start: "14:00", end: "15:00", title: "피아노", color: "#8a9848" },
-    { id: crypto.randomUUID(), start: "15:30", end: "16:30", title: "태권도", color: "#3d60a0" },
-    { id: crypto.randomUUID(), start: "16:30", end: "17:30", title: "댄스", color: "#4f8da3" },
-    { id: crypto.randomUUID(), start: "21:30", end: "22:30", title: "취침", color: "#984d94" },
+    { id: crypto.randomUUID(), start: "07:00", end: "08:00", title: "기상", color: "#5c3620", alarm: false },
+    { id: crypto.randomUUID(), start: "08:00", end: "13:00", title: "학교", color: "#3c362e", alarm: false },
+    { id: crypto.randomUUID(), start: "14:00", end: "15:00", title: "피아노", color: "#8a9848", alarm: true },
+    { id: crypto.randomUUID(), start: "15:30", end: "16:30", title: "태권도", color: "#3d60a0", alarm: false },
+    { id: crypto.randomUUID(), start: "16:30", end: "17:30", title: "댄스", color: "#4f8da3", alarm: false },
+    { id: crypto.randomUUID(), start: "21:30", end: "22:30", title: "취침", color: "#984d94", alarm: false },
   ],
   tue: [],
   wed: [],
@@ -67,12 +67,23 @@ function loadRoutines() {
   try {
     const parsed = JSON.parse(saved);
     return DAYS.reduce((acc, day) => {
-      acc[day.key] = Array.isArray(parsed[day.key]) ? parsed[day.key] : [];
+      acc[day.key] = Array.isArray(parsed[day.key]) ? parsed[day.key].map(normalizeRoutine) : [];
       return acc;
     }, {});
   } catch {
     return emptyRoutines();
   }
+}
+
+function normalizeRoutine(routine) {
+  return {
+    id: routine.id,
+    start: routine.start,
+    end: routine.end,
+    title: routine.title,
+    color: routine.color,
+    alarm: Boolean(routine.alarm),
+  };
 }
 
 function saveRoutines() {
@@ -126,7 +137,7 @@ function minutesToTop(minutes) {
 }
 
 function slideGap() {
-  return parseFloat(getComputedStyle(scroller).getPropertyValue("--slide-gap")) || 0;
+  return parseFloat(getComputedStyle(scroller).columnGap) || 0;
 }
 
 function slideStride() {
@@ -166,6 +177,8 @@ function getGaps(dayKey) {
 }
 
 function render() {
+  const targetDayIndex = activeDayIndex;
+  window.clearTimeout(scrollSettleTimer);
   scroller.innerHTML = "";
   renderDayTitleTrack();
   renderedTodayIndex = todayIndex();
@@ -265,21 +278,20 @@ function render() {
   });
 
   updateLabels();
-  requestAnimationFrame(() => goToDay(activeDayIndex, false));
+  requestAnimationFrame(() => goToDay(targetDayIndex, false));
 }
 
 function renderDayTitleTrack() {
-  updateDayTitle();
-}
-
-function updateDayTitle() {
-  const day = activeDay();
-  const isToday = day.key === DAYS[todayIndex()].key;
   dayTitleTrack.innerHTML = "";
-  const title = document.createElement("span");
-  title.className = `day-title-item${isToday ? " is-today" : ""}`;
-  title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
-  dayTitleTrack.append(title);
+  const today = DAYS[todayIndex()].key;
+  SLIDES.forEach((day) => {
+    const title = document.createElement("span");
+    const isToday = day.key === today;
+    title.className = `day-title-item${isToday ? " is-today" : ""}`;
+    title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
+    dayTitleTrack.append(title);
+  });
+  syncDayTitleTrack();
 }
 
 function createRoutineBlock(dayKey, routine) {
@@ -301,7 +313,10 @@ function createRoutineBlock(dayKey, routine) {
   if (dayKey === DAYS[todayIndex()].key && end < currentMinutes()) block.classList.add("is-past");
 
   block.innerHTML = `
-    <span class="time-label">${displayStart(routine.start)}</span>
+    <span class="routine-meta">
+      <span class="time-label">${displayStart(routine.start)}</span>
+      <img class="alarm-icon${routine.alarm ? "" : " is-off"}" src="./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}" alt="" aria-hidden="true">
+    </span>
     <span class="routine-title">${escapeHtml(routine.title)}</span>
   `;
 
@@ -363,7 +378,6 @@ function applySelectionState() {
 function updateLabels() {
   const day = activeDay();
   dayTitleWindow.setAttribute("aria-label", `${day.ko} ${day.en}`);
-  updateDayTitle();
   $("#menuDayLabel").textContent = "손가락으로 좌우 스와이프";
   $("#menuNow").textContent = displayClock(true);
 }
@@ -383,9 +397,10 @@ function updateLiveTime() {
 
 function setScreen(name) {
   const isMenu = name === "menu";
+  const targetDayIndex = activeDayIndex;
   menuScreen.hidden = !isMenu;
   dayScreen.hidden = isMenu;
-  if (!isMenu) requestAnimationFrame(() => goToDay(activeDayIndex, false));
+  if (!isMenu) requestAnimationFrame(() => goToDay(targetDayIndex, false));
 }
 
 function goToDay(index, smooth = true) {
@@ -396,8 +411,14 @@ function goToDay(index, smooth = true) {
   const currentSlide = Math.round(scroller.scrollLeft / stride);
   const currentWeek = Number.isFinite(currentSlide) ? Math.floor(currentSlide / DAYS.length) : CENTER_WEEK;
   const safeWeek = currentWeek <= 0 || currentWeek >= LOOP_WEEKS - 1 ? CENTER_WEEK : currentWeek;
-  scroller.scrollTo({ left: stride * ((safeWeek * DAYS.length) + activeDayIndex), behavior: smooth ? "smooth" : "auto" });
+  const targetLeft = stride * ((safeWeek * DAYS.length) + activeDayIndex);
+  if (smooth) {
+    scroller.scrollTo({ left: targetLeft, behavior: "smooth" });
+  } else {
+    scroller.scrollLeft = targetLeft;
+  }
   updateLabels();
+  syncDayTitleTrack();
   if (!smooth) requestAnimationFrame(syncDayTitleTrack);
 }
 
@@ -427,9 +448,11 @@ function handleDayScroll() {
 
 function syncDayTitleTrack() {
   const titleWidth = dayTitleWindow.clientWidth;
-  if (!titleWidth) return;
-  dayTitleTrack.style.transform = "";
+  const stride = slideStride();
+  if (!titleWidth || !stride) return;
+  const slideFloat = scroller.scrollLeft / stride;
   dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
+  dayTitleTrack.style.transform = `translate3d(${-slideFloat * stride}px, 0, 0)`;
 }
 
 function rememberPointerStart(event) {
@@ -540,6 +563,7 @@ function openEditor(dayKey = activeDay().key, routine = null, defaults = {}) {
   $("#endInput").value = routine?.end ?? defaults.end ?? "09:00";
   $("#titleInput").value = routine?.title ?? "";
   $("#colorInput").value = routine?.color ?? "#4f8da3";
+  $("#alarmInput").checked = Boolean(routine?.alarm);
   $("#deleteRoutine").hidden = !routine;
   $("#dialogTitle").textContent = routine ? "루틴 수정" : "루틴 등록";
   modalDayLabel();
@@ -568,13 +592,14 @@ function upsertRoutine() {
   const end = $("#endInput").value;
   const title = $("#titleInput").value.trim();
   const color = $("#colorInput").value;
+  const alarm = $("#alarmInput").checked;
 
   if (!validateTime(start, end)) return false;
 
   for (const day of DAYS) {
     routines[day.key] = routines[day.key].filter((routine) => routine.id !== id);
   }
-  routines[dayKey].push({ id, start, end, title, color });
+  routines[dayKey].push({ id, start, end, title, color, alarm });
   saveRoutines();
   activeDayIndex = DAYS.findIndex((day) => day.key === dayKey);
   selectedGapId = null;
@@ -601,7 +626,7 @@ function shareText() {
   return DAYS.map((day) => {
     const items = sorted(day.key);
     const body = items.length
-      ? items.map((routine) => `- ${routine.start}~${routine.end} ${routine.title}`).join("\n")
+      ? items.map((routine) => `- ${routine.start}~${routine.end} ${routine.title}${routine.alarm ? " (알람)" : ""}`).join("\n")
       : "- 비어있음";
     return `${day.ko} ${day.en}\n${body}`;
   }).join("\n\n");
@@ -635,7 +660,7 @@ function normalizeImportedRoutines(payload) {
         routine?.end &&
         routine?.title &&
         routine?.color
-      ))
+      )).map(normalizeRoutine)
       : [];
     return acc;
   }, {});
@@ -678,7 +703,6 @@ $("#tutorialStart").addEventListener("keydown", (event) => {
   setScreen("day");
 });
 $("#backToMenu").addEventListener("click", () => setScreen("menu"));
-$("#menuAdd").addEventListener("click", () => openEditor());
 $("#addRoutine").addEventListener("click", () => openEditor());
 $("#goToday").addEventListener("click", showToday);
 $("#menuShare").addEventListener("click", (event) => shareAll(event.currentTarget).catch(() => alert("공유를 완료하지 못했습니다.")));
@@ -687,6 +711,16 @@ $("#importRoutines").addEventListener("click", () => $("#importFile").click());
 $("#importFile").addEventListener("change", (event) => {
   importRoutineFile(event.target.files?.[0]);
   event.target.value = "";
+});
+$("#resetAll").addEventListener("click", () => {
+  if (!confirm("저장된 모든 루틴을 초기화할까요?")) return;
+  routines = emptyRoutines();
+  saveRoutines();
+  selectedGapId = null;
+  selectedRoutineId = null;
+  activeDayIndex = todayIndex();
+  render();
+  setScreen("menu");
 });
 $("#resetDemo").addEventListener("click", () => {
   routines = structuredClone(demoRoutines);

@@ -116,16 +116,26 @@ button:active,
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 16px);
   margin: 0;
   color: var(--accent);
   font-size: clamp(2rem, 8vw, 3.55rem);
   font-weight: 850;
 }
 
+.brand img {
+  width: clamp(36px, 9vw, 58px);
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .tutorial-card {
   position: relative;
-  width: min(100%, 400px);
-  aspect-ratio: 2 / 3;
+  width: min(100%, 470px);
+  aspect-ratio: 47 / 60;
   min-height: 0;
   margin: 0 auto;
   padding: 0;
@@ -194,6 +204,7 @@ button:active,
 }
 
 .menu-time small {
+  display: none;
   top: 52%;
   color: var(--muted);
   font-size: clamp(0.95rem, 3.6vw, 1.35rem);
@@ -226,16 +237,19 @@ button:active,
 
 .menu-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   justify-items: center;
+  width: min(100%, 470px);
+  margin-inline: auto;
 }
 
 .menu-actions button,
 .day-actions button {
   min-height: 56px;
-  border: 3px solid var(--accent-dim);
-  border-radius: 8px;
-  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  background: transparent url("./btn_m_normal.svg") center / 100% 100% no-repeat;
   color: var(--accent-dim);
   font-size: clamp(1.1rem, 4vw, 1.55rem);
   font-weight: 750;
@@ -243,20 +257,52 @@ button:active,
 
 .menu-actions button:active,
 .day-actions button:active {
-  border-color: var(--accent);
-  background: var(--accent-dim);
+  background-image: url("./btn_m_click.svg");
   color: #071113;
 }
 
 .menu-actions button {
-  width: min(100%, 466px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 16px);
+  width: 100%;
+  min-height: clamp(82px, 19vw, 100px);
+  padding: 0 clamp(10px, 3vw, 20px);
+}
+
+.menu-actions button img {
+  width: clamp(28px, 7vw, 44px);
+  height: auto;
+  flex: 0 0 auto;
+}
+
+.menu-actions button span {
+  white-space: nowrap;
+}
+
+.menu-actions .danger-menu-button {
+  background-image: url("./redbtn_m_normal.svg");
+  color: #b65555;
+}
+
+.menu-actions .danger-menu-button:active {
+  background-image: url("./redbtn_m_click.svg");
+  color: #ffb6a9;
 }
 
 .menu-actions .start-button {
+  grid-column: 1 / -1;
   margin-top: 28px;
-  border-color: var(--accent-dim);
-  background: var(--accent-dim);
+  min-height: clamp(74px, 16vw, 96px);
+  background-image: url("./btn_m_click.svg");
   color: #fff;
+  font-size: clamp(1.65rem, 6vw, 2.7rem);
+}
+
+.menu-actions .start-button:active {
+  background-image: url("./btn_m_normal.svg");
+  color: var(--accent-dim);
 }
 
 .day-screen {
@@ -289,7 +335,7 @@ button:active,
 .day-title-window {
   position: absolute;
   top: 50%;
-  left: calc(var(--gutter) + var(--card-left) + var(--slide-gap));
+  left: calc(var(--gutter) + var(--card-left));
   right: 0;
   z-index: 0;
   overflow: hidden;
@@ -300,10 +346,13 @@ button:active,
 
 .day-title-track {
   --title-width: 220px;
-  display: block;
+  display: flex;
+  gap: calc(var(--slide-gap) + var(--gutter) + var(--card-left));
+  will-change: transform;
 }
 
 .day-title-item {
+  flex: 0 0 var(--title-width);
   display: grid;
   place-items: center;
   font-size: clamp(1.8rem, 7.2vw, 3.25rem);
@@ -322,10 +371,16 @@ button:active,
   width: clamp(44px, 10vw, 58px);
   aspect-ratio: 1;
   place-items: center;
-  border: 3px solid var(--accent-dim);
+  border: 0;
   border-radius: 10px;
-  background: transparent;
+  background: transparent url("./btn_normal.svg") center / 100% 100% no-repeat;
   color: var(--accent-dim);
+}
+
+.icon-button img {
+  width: 70%;
+  height: auto;
+  pointer-events: none;
 }
 
 .menu-button {
@@ -338,29 +393,9 @@ button:active,
 
 .icon-button:active {
   transform: translateY(2px) scale(0.9);
-  border-color: var(--accent);
-  background: var(--accent-dim);
+  background-image: url("./btn_click.svg");
   color: #071113;
   box-shadow: 0 0 0 6px rgba(40, 244, 241, 0.14);
-}
-
-.menu-button span,
-.menu-button::before,
-.menu-button::after {
-  content: "";
-  width: 24px;
-  height: 3px;
-  border-radius: 999px;
-  background: currentColor;
-}
-
-.menu-button {
-  gap: 5px;
-}
-
-.icon-button span {
-  line-height: 1;
-  font-size: clamp(2rem, 6vw, 2.7rem);
 }
 
 .day-actions {
@@ -411,7 +446,7 @@ button:active,
 .timeline {
   position: relative;
   min-height: calc(var(--hour) * 24 + 28px);
-  padding: 18px 0 28px var(--gutter);
+  padding: 0 0 28px var(--gutter);
 }
 
 .timeline::before {
@@ -463,10 +498,10 @@ button:active,
   position: absolute;
   left: 0;
   top: 12px;
-  width: calc(var(--gutter) + var(--card-left) - 12px);
+  width: calc(var(--gutter) + var(--card-left) - 18px);
   color: var(--now);
   text-align: left;
-  font-size: clamp(0.95rem, 3.6vw, 1.45rem);
+  font-size: clamp(0.82rem, 3.15vw, 1.18rem);
   font-weight: 850;
   line-height: 1;
   white-space: nowrap;
@@ -510,6 +545,25 @@ button:active,
   color: #fff;
   text-align: left;
   z-index: 3;
+}
+
+.routine-meta {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: clamp(8px, 2vw, 12px);
+  min-width: 0;
+}
+
+.alarm-icon {
+  width: clamp(24px, 6.5vw, 38px);
+  height: auto;
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.alarm-icon.is-off {
+  opacity: 0.58;
 }
 
 .routine-block.is-past {
@@ -664,6 +718,36 @@ dialog::backdrop {
 .routine-form input[type="color"] {
   height: 64px;
   padding: 8px;
+}
+
+.alarm-toggle {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 0 14px;
+  border: 2px solid #363744;
+  border-radius: 10px;
+  background: #22232b;
+}
+
+.alarm-toggle input {
+  width: 24px;
+  inline-size: 24px;
+  min-height: 24px;
+  accent-color: var(--accent-dim);
+}
+
+.alarm-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.alarm-toggle img {
+  width: 28px;
+  height: auto;
 }
 
 .time-grid {

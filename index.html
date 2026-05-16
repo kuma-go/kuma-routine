@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>KUMA routine</title>
-    <link rel="stylesheet" href="./styles.css?v=20260515-04">
+    <link rel="stylesheet" href="./styles.css?v=20260517-01">
   </head>
   <body>
     <main class="app-shell">
@@ -14,7 +14,10 @@
       </section>
 
       <section class="menu-screen" id="menuScreen" aria-label="메뉴">
-        <p class="brand">KUMA routine</p>
+        <p class="brand">
+          <img src="./simbol.svg" alt="" aria-hidden="true">
+          <span>KUMA routine</span>
+        </p>
         <div class="tutorial-card" id="tutorialStart" role="button" tabindex="0" aria-label="사용 안내를 보고 시작하기">
           <div class="menu-control">
             <strong>DAY 변경</strong>
@@ -29,10 +32,10 @@
           </div>
         </div>
         <div class="menu-actions">
-          <button id="menuShare" type="button">루틴 공유하기</button>
-          <button id="menuAdd" type="button">루틴 추가하기</button>
-          <button id="exportRoutines" type="button">파일로 저장</button>
-          <button id="importRoutines" type="button">불러오기</button>
+          <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span>공유하기</span></button>
+          <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span>저장하기</span></button>
+          <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>불러오기</span></button>
+          <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span>초기화</span></button>
           <button class="start-button" id="openDay" type="button">시작하기</button>
         </div>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
@@ -42,13 +45,13 @@
         <div class="day-topbar">
           <header class="day-header">
             <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴">
-              <span aria-hidden="true"></span>
+              <img src="./Icon_Menu.svg" alt="" aria-hidden="true">
             </button>
             <div class="day-title-window" aria-live="polite">
               <div class="day-title-track" id="dayTitleTrack"></div>
             </div>
             <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가">
-              <span aria-hidden="true">+</span>
+              <img src="./Icon_Plus.svg" alt="" aria-hidden="true">
             </button>
           </header>
           <div class="day-actions">
@@ -95,6 +98,10 @@
           색상
           <input id="colorInput" type="color" value="#4f8da3">
         </label>
+        <label class="alarm-toggle">
+          <input id="alarmInput" type="checkbox">
+          <span><img src="./Icon_Clock.svg" alt="" aria-hidden="true"> 알람 사용</span>
+        </label>
 
         <footer>
           <button class="danger-button" id="deleteRoutine" value="delete" type="button">삭제</button>
@@ -104,6 +111,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260515-04"></script>
+    <script src="./app.js?v=20260517-01"></script>
   </body>
 </html>
