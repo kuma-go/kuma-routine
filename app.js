@@ -300,9 +300,10 @@ function createRoutineBlock(dayKey, routine) {
   const minutes = end - start;
   let pressX = 0;
   let pressY = 0;
-  const block = document.createElement("button");
+  const block = document.createElement("div");
   block.className = `block routine-block${minutes <= 30 ? " is-short" : ""}${selectedRoutineId === routine.id ? " is-selected" : ""}`;
-  block.type = "button";
+  block.setAttribute("role", "button");
+  block.tabIndex = 0;
   block.dataset.id = routine.id;
   block.dataset.day = dayKey;
   block.style.top = `${minutesToTop(start)}px`;
@@ -315,13 +316,23 @@ function createRoutineBlock(dayKey, routine) {
   block.innerHTML = `
     <span class="routine-meta">
       <span class="time-label">${displayStart(routine.start)}</span>
-      <img class="alarm-icon${routine.alarm ? "" : " is-off"}" src="./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}" alt="" aria-hidden="true">
+      <button class="routine-alarm-button${routine.alarm ? "" : " is-off"}" type="button" aria-label="${routine.title} 알람 ${routine.alarm ? "끄기" : "켜기"}">
+        <img class="alarm-icon" src="./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}" alt="" aria-hidden="true">
+      </button>
     </span>
     <span class="routine-title">${escapeHtml(routine.title)}</span>
   `;
 
+  const alarmButton = block.querySelector(".routine-alarm-button");
+  alarmButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    clearLongPress();
+    toggleRoutineAlarm(dayKey, routine.id);
+  });
+
   let pressWasSelected = false;
-  block.addEventListener("click", () => {
+  block.addEventListener("click", (event) => {
+    if (event.target.closest(".routine-alarm-button")) return;
     if (pointerMoved || suppressNextClick) {
       suppressNextClick = false;
       return;
@@ -329,6 +340,7 @@ function createRoutineBlock(dayKey, routine) {
     if (pressWasSelected) openEditor(dayKey, routine);
   });
   block.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".routine-alarm-button")) return;
     pressX = event.clientX;
     pressY = event.clientY;
     pressWasSelected = selectedRoutineId === routine.id;
@@ -348,8 +360,35 @@ function createRoutineBlock(dayKey, routine) {
   block.addEventListener("pointerup", clearLongPress);
   block.addEventListener("pointerleave", clearLongPress);
   block.addEventListener("pointercancel", clearLongPress);
+  block.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    if (selectedRoutineId === routine.id) {
+      openEditor(dayKey, routine);
+      return;
+    }
+    selectedGapId = null;
+    selectedRoutineId = routine.id;
+    applySelectionState();
+  });
 
   return block;
+}
+
+function toggleRoutineAlarm(dayKey, routineId) {
+  const routine = routines[dayKey].find((item) => item.id === routineId);
+  if (!routine) return;
+  routine.alarm = !routine.alarm;
+  saveRoutines();
+  scroller.querySelectorAll(".routine-block").forEach((block) => {
+    if (block.dataset.id !== routineId || block.dataset.day !== dayKey) return;
+    const button = block.querySelector(".routine-alarm-button");
+    const icon = block.querySelector(".alarm-icon");
+    if (!button || !icon) return;
+    button.classList.toggle("is-off", !routine.alarm);
+    button.setAttribute("aria-label", `${routine.title} 알람 ${routine.alarm ? "끄기" : "켜기"}`);
+    icon.src = `./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}`;
+  });
 }
 
 function escapeHtml(value) {
@@ -451,8 +490,9 @@ function syncDayTitleTrack() {
   const stride = slideStride();
   if (!titleWidth || !stride) return;
   const slideFloat = scroller.scrollLeft / stride;
+  const titleStride = titleWidth + slideGap();
   dayTitleTrack.style.setProperty("--title-width", `${titleWidth}px`);
-  dayTitleTrack.style.transform = `translate3d(${-slideFloat * stride}px, 0, 0)`;
+  dayTitleTrack.style.transform = `translate3d(${-slideFloat * titleStride}px, 0, 0)`;
 }
 
 function rememberPointerStart(event) {
@@ -520,9 +560,15 @@ function finishMouseDrag() {
 }
 
 function showToday() {
-  setScreen("day");
-  goToDay(todayIndex(), true);
-  window.setTimeout(scrollToCurrentTime, 260);
+  const today = todayIndex();
+  activeDayIndex = today;
+  menuScreen.hidden = true;
+  dayScreen.hidden = false;
+  requestAnimationFrame(() => {
+    goToDay(today, false);
+    syncDayTitleTrack();
+    requestAnimationFrame(scrollToCurrentTime);
+  });
 }
 
 function scrollToCurrentTime() {
@@ -688,11 +734,25 @@ async function shareAll(trigger = $("#menuShare")) {
     return;
   }
   await navigator.clipboard.writeText(text);
-  const original = trigger.textContent;
-  trigger.textContent = "복사 완료";
+  const label = trigger.querySelector("span") ?? trigger;
+  const original = label.textContent;
+  label.textContent = "복사 완료";
   window.setTimeout(() => {
-    trigger.textContent = original;
+    label.textContent = original;
   }, 1400);
+}
+
+function installPressFeedback() {
+  document.addEventListener("pointerdown", (event) => {
+    const button = event.target.closest("button, [role='button']");
+    if (!button) return;
+    button.classList.add("is-pressed");
+  });
+  for (const eventName of ["pointerup", "pointercancel", "blur"]) {
+    document.addEventListener(eventName, () => {
+      document.querySelectorAll(".is-pressed").forEach((button) => button.classList.remove("is-pressed"));
+    }, true);
+  }
 }
 
 $("#openDay").addEventListener("click", () => setScreen("day"));
@@ -766,5 +826,6 @@ window.addEventListener("resize", () => {
 });
 window.setInterval(updateLiveTime, 1000);
 
+installPressFeedback();
 render();
 setScreen("menu");

@@ -256,7 +256,9 @@ button:active,
 }
 
 .menu-actions button:active,
-.day-actions button:active {
+.day-actions button:active,
+.menu-actions button.is-pressed,
+.day-actions button.is-pressed {
   background-image: url("./btn_m_click.svg");
   color: #071113;
 }
@@ -291,6 +293,11 @@ button:active,
   color: #ffb6a9;
 }
 
+.menu-actions .danger-menu-button.is-pressed {
+  background-image: url("./redbtn_m_click.svg");
+  color: #ffb6a9;
+}
+
 .menu-actions .start-button {
   grid-column: 1 / -1;
   margin-top: 28px;
@@ -301,6 +308,11 @@ button:active,
 }
 
 .menu-actions .start-button:active {
+  background-image: url("./btn_m_normal.svg");
+  color: var(--accent-dim);
+}
+
+.menu-actions .start-button.is-pressed {
   background-image: url("./btn_m_normal.svg");
   color: var(--accent-dim);
 }
@@ -335,8 +347,8 @@ button:active,
 .day-title-window {
   position: absolute;
   top: 50%;
-  left: calc(var(--gutter) + var(--card-left));
-  right: 0;
+  left: calc(clamp(44px, 10vw, 58px) + 12px);
+  right: calc(clamp(44px, 10vw, 58px) + 12px);
   z-index: 0;
   overflow: hidden;
   min-width: 0;
@@ -347,7 +359,7 @@ button:active,
 .day-title-track {
   --title-width: 220px;
   display: flex;
-  gap: calc(var(--slide-gap) + var(--gutter) + var(--card-left));
+  gap: var(--slide-gap);
   will-change: transform;
 }
 
@@ -398,16 +410,33 @@ button:active,
   box-shadow: 0 0 0 6px rgba(40, 244, 241, 0.14);
 }
 
+.icon-button.is-pressed {
+  transform: translateY(2px) scale(0.9);
+  background-image: url("./btn_click.svg");
+  color: #071113;
+  box-shadow: 0 0 0 6px rgba(40, 244, 241, 0.14);
+}
+
 .day-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(130px, 220px);
+  justify-content: center;
   gap: 10px;
   margin-bottom: 0;
 }
 
 .day-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 46px;
   font-size: clamp(0.95rem, 3.4vw, 1.15rem);
+}
+
+.day-actions button img {
+  width: 24px;
+  height: auto;
 }
 
 .day-scroller {
@@ -545,6 +574,7 @@ button:active,
   color: #fff;
   text-align: left;
   z-index: 3;
+  cursor: pointer;
 }
 
 .routine-meta {
@@ -562,7 +592,27 @@ button:active,
   pointer-events: none;
 }
 
-.alarm-icon.is-off {
+.routine-alarm-button {
+  display: grid;
+  width: clamp(32px, 8vw, 44px);
+  aspect-ratio: 1;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.routine-alarm-button:active,
+.routine-alarm-button.is-pressed {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.routine-alarm-button.is-off .alarm-icon {
   opacity: 0.58;
 }
 
