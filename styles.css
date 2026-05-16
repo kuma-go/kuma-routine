@@ -245,7 +245,9 @@ button:active,
 }
 
 .menu-actions button,
+.menu-actions .menu-link-button,
 .day-actions button {
+  text-decoration: none;
   min-height: 56px;
   border: 0;
   border-radius: 12px;
@@ -256,14 +258,17 @@ button:active,
 }
 
 .menu-actions button:active,
+.menu-actions .menu-link-button:active,
 .day-actions button:active,
 .menu-actions button.is-pressed,
+.menu-actions .menu-link-button.is-pressed,
 .day-actions button.is-pressed {
   background-image: url("./btn_m_click.svg");
   color: #071113;
 }
 
-.menu-actions button {
+.menu-actions button,
+.menu-actions .menu-link-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -273,13 +278,15 @@ button:active,
   padding: 0 clamp(10px, 3vw, 20px);
 }
 
-.menu-actions button img {
+.menu-actions button img,
+.menu-actions .menu-link-button img {
   width: clamp(28px, 7vw, 44px);
   height: auto;
   flex: 0 0 auto;
 }
 
-.menu-actions button span {
+.menu-actions button span,
+.menu-actions .menu-link-button span {
   white-space: nowrap;
 }
 
@@ -301,7 +308,7 @@ button:active,
 .menu-actions .start-button {
   grid-column: 1 / -1;
   margin-top: 28px;
-  min-height: clamp(74px, 16vw, 96px);
+  min-height: clamp(88px, 18vw, 108px);
   background-image: url("./btn_m_click.svg");
   color: #fff;
   font-size: clamp(1.65rem, 6vw, 2.7rem);
@@ -419,7 +426,7 @@ button:active,
 
 .day-actions {
   display: grid;
-  grid-template-columns: minmax(130px, 220px);
+  grid-template-columns: minmax(min(100%, 230px), min(100%, 470px));
   justify-content: center;
   gap: 10px;
   margin-bottom: 0;
@@ -430,8 +437,8 @@ button:active,
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 46px;
-  font-size: clamp(0.95rem, 3.4vw, 1.15rem);
+  min-height: clamp(54px, 12vw, 68px);
+  font-size: clamp(1.1rem, 4vw, 1.45rem);
 }
 
 .day-actions button img {

@@ -300,6 +300,7 @@ function createRoutineBlock(dayKey, routine) {
   const minutes = end - start;
   let pressX = 0;
   let pressY = 0;
+  let pressMoved = false;
   const block = document.createElement("div");
   block.className = `block routine-block${minutes <= 30 ? " is-short" : ""}${selectedRoutineId === routine.id ? " is-selected" : ""}`;
   block.setAttribute("role", "button");
@@ -333,8 +334,9 @@ function createRoutineBlock(dayKey, routine) {
   let pressWasSelected = false;
   block.addEventListener("click", (event) => {
     if (event.target.closest(".routine-alarm-button")) return;
-    if (pointerMoved || suppressNextClick) {
+    if (pointerMoved || pressMoved || suppressNextClick) {
       suppressNextClick = false;
+      pressMoved = false;
       return;
     }
     if (pressWasSelected) openEditor(dayKey, routine);
@@ -343,6 +345,7 @@ function createRoutineBlock(dayKey, routine) {
     if (event.target.closest(".routine-alarm-button")) return;
     pressX = event.clientX;
     pressY = event.clientY;
+    pressMoved = false;
     pressWasSelected = selectedRoutineId === routine.id;
     selectedGapId = null;
     selectedRoutineId = routine.id;
@@ -353,13 +356,24 @@ function createRoutineBlock(dayKey, routine) {
     }, 520);
   });
   block.addEventListener("pointermove", (event) => {
-    if (Math.abs(event.clientX - pressX) > 8 || Math.abs(event.clientY - pressY) > 8) {
+    if (Math.abs(event.clientX - pressX) > 6 || Math.abs(event.clientY - pressY) > 6) {
+      pressMoved = true;
+      suppressNextClick = true;
       clearLongPress();
     }
   });
-  block.addEventListener("pointerup", clearLongPress);
+  block.addEventListener("pointerup", () => {
+    clearLongPress();
+    if (pressMoved) window.setTimeout(() => {
+      pressMoved = false;
+      suppressNextClick = false;
+    }, 180);
+  });
   block.addEventListener("pointerleave", clearLongPress);
-  block.addEventListener("pointercancel", clearLongPress);
+  block.addEventListener("pointercancel", () => {
+    pressMoved = false;
+    clearLongPress();
+  });
   block.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -541,7 +555,7 @@ function clearPointerMoveSoon() {
   finishMouseDrag();
   window.setTimeout(() => {
     pointerMoved = false;
-  }, 0);
+  }, 180);
 }
 
 function finishMouseDrag() {
@@ -744,7 +758,7 @@ async function shareAll(trigger = $("#menuShare")) {
 
 function installPressFeedback() {
   document.addEventListener("pointerdown", (event) => {
-    const button = event.target.closest("button, [role='button']");
+    const button = event.target.closest("button, a, [role='button']");
     if (!button) return;
     button.classList.add("is-pressed");
   });
