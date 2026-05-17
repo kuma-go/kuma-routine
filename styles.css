@@ -240,8 +240,7 @@ button:active,
   display: grid;
   gap: 14px;
   justify-self: center;
-  width: 600px;
-  max-width: calc(100vw - 100px);
+  width: min(100%, 470px);
 }
 
 .menu-actions {
@@ -319,8 +318,7 @@ button:active,
 }
 
 .menu-action-area > .start-button {
-  width: 600px;
-  max-width: 100%;
+  width: 100%;
   margin-top: 28px;
   min-height: clamp(88px, 18vw, 108px);
   border: 4px solid var(--accent-dim);
@@ -523,8 +521,8 @@ button:active,
 }
 
 .timeline.is-empty::before {
-  top: calc(var(--hour) * 2);
-  bottom: calc(var(--hour) * 2);
+  top: 0;
+  bottom: 28px;
 }
 
 .noon-line,

@@ -115,7 +115,7 @@ function toTime(minutes) {
 function displayStart(value) {
   const minutes = toMinutes(value);
   const hour24 = Math.floor(minutes / 60);
-  const hour = hour24 % 12 || 12;
+  const hour = hour24 === 0 ? 0 : hour24 % 12 || 12;
   const minute = minutes % 60;
   return minute ? `${hour}:${String(minute).padStart(2, "0")}~` : `${hour}:00~`;
 }
@@ -163,7 +163,7 @@ function sorted(dayKey) {
 
 function getGaps(dayKey) {
   const dayRoutines = sorted(dayKey);
-  if (!dayRoutines.length) return [{ start: 120, end: 1320 }];
+  if (!dayRoutines.length) return [{ start: 0, end: 1440 }];
 
   const gaps = [];
   let cursor = 0;
