@@ -444,7 +444,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-26", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-27", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();

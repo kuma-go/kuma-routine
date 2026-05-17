@@ -1,9 +1,9 @@
-const CACHE_NAME = "kuma-routine-cache-v20260517-10";
+const CACHE_NAME = "kuma-routine-cache-v20260517-11";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20260517-26",
-  "./app.js?v=20260517-26",
+  "./styles.css?v=20260517-27",
+  "./app.js?v=20260517-27",
   "./manifest.json",
   "./pwa-icon.svg",
   "./icon-192.png",
