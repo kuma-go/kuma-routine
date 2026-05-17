@@ -13,6 +13,8 @@ const LOOP_WEEKS = 5;
 const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
 const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
 const HOUR_HEIGHT = () => Math.min(100, Math.max(70, window.innerWidth * 0.19));
+const MIN_ROUTINE_HEIGHT = () => Math.min(118, Math.max(88, window.innerWidth * 0.22));
+const MIN_GAP_HEIGHT = () => Math.min(86, Math.max(58, window.innerWidth * 0.15));
 const $ = (selector) => document.querySelector(selector);
 
 const emptyRoutines = () => DAYS.reduce((acc, day) => {
@@ -146,7 +148,7 @@ function slideStride() {
 }
 
 function gapVisualHeight(minutes) {
-  return Math.max(50, minutesToTop(minutes));
+  return Math.max(MIN_GAP_HEIGHT(), minutesToTop(minutes));
 }
 
 function gapId(dayKey, gap) {
@@ -177,6 +179,72 @@ function getGaps(dayKey) {
   return gaps.filter((gap) => gap.end - gap.start >= 15);
 }
 
+function routineVisualHeight(routine, minutesOverride = null) {
+  const minutes = minutesOverride ?? (toMinutes(routine.end) - toMinutes(routine.start));
+  const titleLength = Math.max(1, Array.from(routine.title ?? "").length);
+  const estimatedLines = Math.ceil(titleLength / 7);
+  const textHeight = 58 + (estimatedLines * 34);
+  return Math.max(MIN_ROUTINE_HEIGHT(), textHeight, minutesToTop(minutes));
+}
+
+function createTimelineLayout(dayKey) {
+  const items = [];
+  let cursor = 0;
+  let y = 0;
+
+  for (const routine of sorted(dayKey)) {
+    const start = toMinutes(routine.start);
+    const end = toMinutes(routine.end);
+    if (start > cursor) {
+      const gap = { start: cursor, end: start };
+      const height = gapVisualHeight(gap.end - gap.start);
+      items.push({ type: "gap", gap, start: gap.start, end: gap.end, top: y, height });
+      y += height;
+    }
+
+    const routineStart = Math.max(start, cursor);
+    const routineEnd = Math.max(end, routineStart + 15);
+    const duration = routineEnd - routineStart;
+    const height = routineVisualHeight(routine, duration);
+    items.push({ type: "routine", routine, start: routineStart, end: routineEnd, top: y, height });
+    y += height;
+    cursor = Math.max(cursor, end, routineEnd);
+  }
+
+  if (cursor < 1440) {
+    const gap = { start: cursor, end: 1440 };
+    const height = gapVisualHeight(gap.end - gap.start);
+    items.push({ type: "gap", gap, start: gap.start, end: gap.end, top: y, height });
+    y += height;
+  }
+
+  return { items: items.filter((item) => item.end - item.start >= 1), height: y };
+}
+
+function timelineYForMinute(layout, minute) {
+  const safeMinute = Math.max(0, Math.min(1440, minute));
+  for (const item of layout.items) {
+    if (safeMinute < item.start) return item.top;
+    if (safeMinute <= item.end) {
+      const duration = Math.max(1, item.end - item.start);
+      return item.top + (((safeMinute - item.start) / duration) * item.height);
+    }
+  }
+  return layout.height;
+}
+
+function minuteForTimelineY(layout, y) {
+  const safeY = Math.max(0, Math.min(layout.height, y));
+  for (const item of layout.items) {
+    const bottom = item.top + item.height;
+    if (safeY <= bottom) {
+      const ratio = item.height ? (safeY - item.top) / item.height : 0;
+      return item.start + (ratio * (item.end - item.start));
+    }
+  }
+  return 1440;
+}
+
 function render() {
   const targetDayIndex = activeDayIndex;
   window.clearTimeout(scrollSettleTimer);
@@ -193,15 +261,18 @@ function render() {
 
     const timeline = document.createElement("div");
     const hasRoutines = sorted(day.key).length > 0;
+    const layout = createTimelineLayout(day.key);
+    timeline._timeLayout = layout;
     timeline.className = `timeline${hasRoutines ? "" : " is-empty"}`;
+    timeline.style.minHeight = `${layout.height + 28}px`;
     timeline.addEventListener("click", (event) => {
-      if (event.target.closest("button")) return;
+      if (event.target.closest(".block")) return;
       selectedRoutineId = null;
       selectedGapId = null;
       applySelectionState();
     });
     timeline.addEventListener("pointerdown", (event) => {
-      if (event.target.closest("button")) return;
+      if (event.target.closest(".block")) return;
       const start = roundedTimeFromPoint(timeline, event.clientY);
       longPressTimer = window.setTimeout(() => {
         openEditor(day.key, null, {
@@ -216,26 +287,27 @@ function render() {
 
     const noon = document.createElement("div");
     noon.className = "noon-line";
-    noon.style.top = `${minutesToTop(720)}px`;
+    noon.style.top = `${timelineYForMinute(layout, 720)}px`;
     noon.innerHTML = '<span class="noon-label">오전(AM)<br>오후(PM)</span>';
     timeline.append(noon);
 
     if (day.key === DAYS[todayIndex()].key) {
       const nowLine = document.createElement("div");
       nowLine.className = "now-line";
-      nowLine.style.top = `${minutesToTop(currentMinutes())}px`;
+      nowLine.style.top = `${timelineYForMinute(layout, currentMinutes())}px`;
       nowLine.innerHTML = `<span class="now-label">${displayClock(true)}</span>`;
       timeline.append(nowLine);
     }
 
-    for (const gap of getGaps(day.key)) {
+    for (const entry of layout.items.filter((item) => item.type === "gap")) {
+      const gap = entry.gap;
       const block = document.createElement("button");
       const minutes = gap.end - gap.start;
       block.type = "button";
       block.dataset.selectId = gapId(day.key, gap);
       block.className = `block gap-block${minutes <= 30 ? " is-short" : ""}${isSelectedGap(day.key, gap) ? " is-selected" : ""}`;
-      block.style.top = `${minutesToTop(gap.start)}px`;
-      block.style.height = `${gapVisualHeight(minutes)}px`;
+      block.style.top = `${entry.top}px`;
+      block.style.height = `${entry.height}px`;
       block.setAttribute("aria-label", `${displayStart(toTime(gap.start))} 빈 시간에 루틴 추가`);
       block.innerHTML = `<span class="time-label">${displayStart(toTime(gap.start))}</span>`;
       let pressWasSelected = false;
@@ -270,8 +342,8 @@ function render() {
       timeline.append(block);
     }
 
-    for (const routine of sorted(day.key)) {
-      timeline.append(createRoutineBlock(day.key, routine));
+    for (const entry of layout.items.filter((item) => item.type === "routine")) {
+      timeline.append(createRoutineBlock(day.key, entry.routine, entry));
     }
 
     slide.append(timeline);
@@ -295,7 +367,7 @@ function renderDayTitleTrack() {
   syncDayTitleTrack();
 }
 
-function createRoutineBlock(dayKey, routine) {
+function createRoutineBlock(dayKey, routine, layoutEntry) {
   const start = toMinutes(routine.start);
   const end = toMinutes(routine.end);
   const minutes = end - start;
@@ -308,8 +380,8 @@ function createRoutineBlock(dayKey, routine) {
   block.tabIndex = 0;
   block.dataset.id = routine.id;
   block.dataset.day = dayKey;
-  block.style.top = `${minutesToTop(start)}px`;
-  block.style.height = `${Math.max(50, minutesToTop(minutes))}px`;
+  block.style.top = `${layoutEntry.top}px`;
+  block.style.height = `${layoutEntry.height}px`;
   block.style.background = routine.color;
   block.setAttribute("aria-label", `${displayStart(routine.start)} ${routine.title} 수정`);
 
@@ -444,7 +516,8 @@ function updateLiveTime() {
 
   $("#menuNow").textContent = displayClock(true);
   scroller.querySelectorAll(".now-line").forEach((line) => {
-    line.style.top = `${minutesToTop(currentMinutes())}px`;
+    const timeline = line.closest(".timeline");
+    line.style.top = `${timelineYForMinute(timeline?._timeLayout ?? createTimelineLayout(activeDay().key), currentMinutes())}px`;
     line.querySelector(".now-label").textContent = displayClock(true);
   });
 }
@@ -613,7 +686,7 @@ function modalDayLabel() {
 function roundedTimeFromPoint(timeline, clientY) {
   const rect = timeline.getBoundingClientRect();
   const y = clientY - rect.top;
-  const minutes = Math.round((y / HOUR_HEIGHT()) * 2) * 30;
+  const minutes = Math.round((minuteForTimelineY(timeline._timeLayout, y) / 30)) * 30;
   return Math.max(0, Math.min(1410, minutes));
 }
 
@@ -646,6 +719,17 @@ function validateTime(start, end) {
   return true;
 }
 
+function hasOverlappingRoutine(dayKey, id, start, end) {
+  const nextStart = toMinutes(start);
+  const nextEnd = toMinutes(end);
+  return routines[dayKey].some((routine) => {
+    if (routine.id === id) return false;
+    const routineStart = toMinutes(routine.start);
+    const routineEnd = toMinutes(routine.end);
+    return nextStart < routineEnd && nextEnd > routineStart;
+  });
+}
+
 function upsertRoutine() {
   const id = $("#routineId").value || crypto.randomUUID();
   const dayKey = $("#dayInput").value;
@@ -656,6 +740,10 @@ function upsertRoutine() {
   const alarm = $("#alarmInput").checked;
 
   if (!validateTime(start, end)) return false;
+  if (hasOverlappingRoutine(dayKey, id, start, end)) {
+    alert("이미 등록된 일정과 시간이 겹칩니다.");
+    return false;
+  }
 
   for (const day of DAYS) {
     routines[day.key] = routines[day.key].filter((routine) => routine.id !== id);
