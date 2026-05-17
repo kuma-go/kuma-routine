@@ -1,14 +1,15 @@
 const DAYS = [
-  { key: "mon", ko: "월", en: "MON" },
-  { key: "tue", ko: "화", en: "TUE" },
-  { key: "wed", ko: "수", en: "WED" },
-  { key: "thu", ko: "목", en: "THU" },
-  { key: "fri", ko: "금", en: "FRI" },
-  { key: "sat", ko: "토", en: "SAT" },
-  { key: "sun", ko: "일", en: "SUN" },
+  { key: "mon", ko: "월", en: "MON", ja: "月" },
+  { key: "tue", ko: "화", en: "TUE", ja: "火" },
+  { key: "wed", ko: "수", en: "WED", ja: "水" },
+  { key: "thu", ko: "목", en: "THU", ja: "木" },
+  { key: "fri", ko: "금", en: "FRI", ja: "金" },
+  { key: "sat", ko: "토", en: "SAT", ja: "土" },
+  { key: "sun", ko: "일", en: "SUN", ja: "日" },
 ];
 
 const STORAGE_KEY = "kuma-routine.v5";
+const LANGUAGE_STORAGE_KEY = "kuma-routine.language";
 const LOOP_WEEKS = 5;
 const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
 const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
@@ -17,6 +18,159 @@ const HOUR_HEIGHT = () => Math.min(100, Math.max(70, window.innerWidth * 0.19));
 const MIN_ROUTINE_HEIGHT = () => Math.min(118, Math.max(88, window.innerWidth * 0.22));
 const MIN_GAP_HEIGHT = () => Math.min(86, Math.max(58, window.innerWidth * 0.15));
 const $ = (selector) => document.querySelector(selector);
+
+const I18N = {
+  ko: {
+    addRoutine: "루틴 추가",
+    alarmChangeFail: "알람 설정을 변경하지 못했습니다.",
+    alarmDenied: "브라우저 알림 권한이 꺼져 있어요. 기기/브라우저 설정에서 알림을 허용한 뒤 다시 켜주세요.",
+    alarmPermissionNeeded: "알람을 사용하려면 브라우저 알림 권한이 필요해요.",
+    alarmUnsupported: "이 브라우저는 시스템 알림을 지원하지 않아서, 앱이 열려 있을 때 화면 알림으로 알려드릴게요.",
+    alarmUse: "알람 사용",
+    cancel: "취소",
+    close: "닫기",
+    color: "색상",
+    content: "내용",
+    creator: "제작자",
+    creatorContact: "제작자/문의",
+    currentTime: "현재 시간",
+    dayChange: "DAY 변경",
+    dayScreenAria: "요일별 루틴 화면",
+    delete: "삭제",
+    dialogCreate: "루틴 등록",
+    dialogEdit: "루틴 수정",
+    endAfterStart: "종료시간은 시작시간보다 늦어야 합니다.",
+    endTime: "종료시간",
+    goCurrent: "현재로",
+    installAlready: "이미 앱으로 설치되어 있거나, 이 브라우저에서는 설치 버튼이 바로 제공되지 않아요.",
+    installApp: "앱아이콘 추가",
+    installHelp: "iPhone은 공유 버튼을 누른 뒤 '홈 화면에 추가'를 선택하면 앱아이콘으로 추가할 수 있어요.",
+    language: "언어",
+    loadFail: "루틴 파일을 불러오지 못했습니다.",
+    loadFile: "불러오기",
+    makeSample: "샘플 만들기",
+    menuAria: "메뉴",
+    nextDay: "다음 요일",
+    noonDisplay: "정오 표시",
+    overlap: "이미 등록된 일정과 시간이 겹칩니다.",
+    prevDay: "이전 요일",
+    reset: "초기화",
+    resetConfirm: "저장된 모든 루틴을 초기화할까요?",
+    save: "저장",
+    saveFile: "저장하기",
+    sendMail: "메일 보내기",
+    settings: "설정",
+    share: "공유하기",
+    shareFail: "공유를 완료하지 못했습니다.",
+    start: "시작하기",
+    startTime: "시작시간",
+    swipeHint: "손가락으로 좌우 스와이프",
+    titlePlaceholder: "예: 학교",
+    today: "오늘",
+    tutorialAria: "사용 안내를 보고 시작하기",
+    empty: "비어있음",
+  },
+  en: {
+    addRoutine: "Add routine",
+    alarmChangeFail: "Could not change the alarm setting.",
+    alarmDenied: "Browser notifications are blocked. Allow notifications in your device or browser settings.",
+    alarmPermissionNeeded: "Notification permission is required to use alarms.",
+    alarmUnsupported: "This browser does not support system notifications, so alerts will appear inside the app while it is open.",
+    alarmUse: "Use alarm",
+    cancel: "Cancel",
+    close: "Close",
+    color: "Color",
+    content: "Content",
+    creator: "Creator",
+    creatorContact: "Creator / Contact",
+    currentTime: "Current time",
+    dayChange: "Change Day",
+    dayScreenAria: "Daily routine screen",
+    delete: "Delete",
+    dialogCreate: "Add Routine",
+    dialogEdit: "Edit Routine",
+    endAfterStart: "End time must be later than start time.",
+    endTime: "End time",
+    goCurrent: "Current",
+    installAlready: "This app may already be installed, or this browser does not provide a direct install prompt.",
+    installApp: "Add app icon",
+    installHelp: "On iPhone, tap Share, then choose 'Add to Home Screen' to add the app icon.",
+    language: "Language",
+    loadFail: "Could not load the routine file.",
+    loadFile: "Load",
+    makeSample: "Create sample",
+    menuAria: "Menu",
+    nextDay: "Next day",
+    noonDisplay: "Noon marker",
+    overlap: "This overlaps an existing routine.",
+    prevDay: "Previous day",
+    reset: "Reset",
+    resetConfirm: "Reset all saved routines?",
+    save: "Save",
+    saveFile: "Save file",
+    sendMail: "Send mail",
+    settings: "Settings",
+    share: "Share",
+    shareFail: "Could not complete sharing.",
+    start: "Start",
+    startTime: "Start time",
+    swipeHint: "Swipe left or right",
+    titlePlaceholder: "e.g. School",
+    today: "Today",
+    tutorialAria: "Open the app after reading the guide",
+    empty: "Empty",
+  },
+  ja: {
+    addRoutine: "ルーティン追加",
+    alarmChangeFail: "アラーム設定を変更できませんでした。",
+    alarmDenied: "ブラウザ通知がオフです。端末またはブラウザ設定で通知を許可してください。",
+    alarmPermissionNeeded: "アラームを使うには通知の許可が必要です。",
+    alarmUnsupported: "このブラウザはシステム通知に対応していないため、アプリを開いている間は画面内通知でお知らせします。",
+    alarmUse: "アラーム使用",
+    cancel: "キャンセル",
+    close: "閉じる",
+    color: "カラー",
+    content: "内容",
+    creator: "制作者",
+    creatorContact: "制作者/問い合わせ",
+    currentTime: "現在時刻",
+    dayChange: "DAY変更",
+    dayScreenAria: "曜日別ルーティン画面",
+    delete: "削除",
+    dialogCreate: "ルーティン登録",
+    dialogEdit: "ルーティン編集",
+    endAfterStart: "終了時間は開始時間より後にしてください。",
+    endTime: "終了時間",
+    goCurrent: "現在へ",
+    installAlready: "すでにインストール済み、またはこのブラウザでは直接追加できません。",
+    installApp: "アプリアイコン追加",
+    installHelp: "iPhoneでは共有ボタンから「ホーム画面に追加」を選ぶとアプリアイコンを追加できます。",
+    language: "言語",
+    loadFail: "ルーティンファイルを読み込めませんでした。",
+    loadFile: "読み込み",
+    makeSample: "サンプル作成",
+    menuAria: "メニュー",
+    nextDay: "次の曜日",
+    noonDisplay: "正午表示",
+    overlap: "登録済みの予定と時間が重なっています。",
+    prevDay: "前の曜日",
+    reset: "初期化",
+    resetConfirm: "保存されたすべてのルーティンを初期化しますか？",
+    save: "保存",
+    saveFile: "保存",
+    sendMail: "メール送信",
+    settings: "設定",
+    share: "共有",
+    shareFail: "共有できませんでした。",
+    start: "開始",
+    startTime: "開始時間",
+    swipeHint: "左右にスワイプ",
+    titlePlaceholder: "例: 学校",
+    today: "今日",
+    tutorialAria: "ガイドを見て開始",
+    empty: "空き",
+  },
+};
 
 const emptyRoutines = () => DAYS.reduce((acc, day) => {
   acc[day.key] = [];
@@ -56,6 +210,8 @@ let lastViewportWidth = window.innerWidth;
 let renderedTodayIndex = todayIndex();
 let warnedNotificationFallback = false;
 let serviceWorkerRegistration = null;
+let deferredInstallPrompt = null;
+let currentLanguage = loadLanguage();
 const firedAlarmKeys = loadFiredAlarmKeys();
 
 const menuScreen = $("#menuScreen");
@@ -66,6 +222,56 @@ const dayTitleTrack = $("#dayTitleTrack");
 const dialog = $("#routineDialog");
 const form = $("#routineForm");
 const contactDialog = $("#contactDialog");
+const settingsDialog = $("#settingsDialog");
+
+function loadLanguage() {
+  const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  if (saved && I18N[saved]) return saved;
+  const browserLanguage = navigator.language?.toLowerCase() ?? "";
+  if (browserLanguage.startsWith("ja")) return "ja";
+  if (browserLanguage.startsWith("en")) return "en";
+  return "ko";
+}
+
+function t(key) {
+  return I18N[currentLanguage]?.[key] ?? I18N.ko[key] ?? key;
+}
+
+function dayLabel(day, includeToday = false) {
+  const base = currentLanguage === "ko"
+    ? `${day.ko} ${day.en}`
+    : currentLanguage === "ja"
+      ? `${day.ja} ${day.en}`
+      : day.en;
+  return includeToday ? `${base} ${t("today")}` : base;
+}
+
+function dayLongLabel(day) {
+  return currentLanguage === "ko"
+    ? `${day.ko}요일`
+    : currentLanguage === "ja"
+      ? `${day.ja}曜日`
+      : day.en;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = currentLanguage === "ja" ? "ja" : currentLanguage === "en" ? "en" : "ko";
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-attr]").forEach((element) => {
+    for (const pair of element.dataset.i18nAttr.split(",")) {
+      const [attribute, key] = pair.split(":").map((value) => value.trim());
+      if (attribute && key) element.setAttribute(attribute, t(key));
+    }
+  });
+  document.querySelectorAll("input[name='language']").forEach((input) => {
+    input.checked = input.value === currentLanguage;
+  });
+  updateLabels();
+  renderDayTitleTrack();
+  modalDayLabel();
+}
 
 function loadRoutines() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -171,7 +377,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-17", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-19", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
@@ -199,18 +405,18 @@ async function ensureAlarmPermission() {
   if (permission === "unsupported") {
     if (!warnedNotificationFallback) {
       warnedNotificationFallback = true;
-      alert("이 브라우저는 시스템 알림을 지원하지 않아서, 앱이 열려 있을 때 화면 알림으로 알려드릴게요.");
+      alert(t("alarmUnsupported"));
     }
     return true;
   }
   if (permission === "denied") {
-    alert("브라우저 알림 권한이 꺼져 있어요. 기기/브라우저 설정에서 알림을 허용한 뒤 다시 켜주세요.");
+    alert(t("alarmDenied"));
     return false;
   }
 
   const nextPermission = await requestNotificationPermission();
   if (nextPermission === "granted") return true;
-  alert("알람을 사용하려면 브라우저 알림 권한이 필요해요.");
+  alert(t("alarmPermissionNeeded"));
   return false;
 }
 
@@ -248,7 +454,7 @@ function showSystemNotification(title, options) {
 function notifyRoutine(dayKey, routine) {
   const day = DAYS.find((item) => item.key === dayKey);
   const title = "KUMA routine";
-  const body = `${day?.ko ?? ""} ${day?.en ?? ""} ${displayStart(routine.start)} ${routine.title}`;
+  const body = `${day ? dayLabel(day) : ""} ${displayStart(routine.start)} ${routine.title}`;
   const options = {
     body,
     tag: `kuma-routine-${localDateKey()}-${dayKey}-${routine.id}`,
@@ -397,7 +603,7 @@ function render() {
     slide.className = "day-slide";
     slide.dataset.day = day.key;
     slide.dataset.slideIndex = String(slideIndex);
-    slide.setAttribute("aria-label", `${day.ko}요일 루틴`);
+    slide.setAttribute("aria-label", `${dayLongLabel(day)} routine`);
 
     const timeline = document.createElement("div");
     const hasRoutines = sorted(day.key).length > 0;
@@ -448,7 +654,7 @@ function render() {
       block.className = `block gap-block${minutes <= 30 ? " is-short" : ""}${isSelectedGap(day.key, gap) ? " is-selected" : ""}`;
       block.style.top = `${entry.top}px`;
       block.style.height = `${entry.height}px`;
-      block.setAttribute("aria-label", `${displayStart(toTime(gap.start))} 빈 시간에 루틴 추가`);
+      block.setAttribute("aria-label", `${displayStart(toTime(gap.start))} ${t("empty")} ${t("addRoutine")}`);
       block.innerHTML = `<span class="time-label">${displayStart(toTime(gap.start))}</span>`;
       let pressWasSelected = false;
       block.addEventListener("click", () => {
@@ -501,7 +707,7 @@ function renderDayTitleTrack() {
     const title = document.createElement("span");
     const isToday = day.key === today;
     title.className = `day-title-item${isToday ? " is-today" : ""}`;
-    title.textContent = isToday ? `${day.ko} ${day.en} 오늘` : `${day.ko} ${day.en}`;
+    title.textContent = dayLabel(day, isToday);
     dayTitleTrack.append(title);
   });
   syncDayTitleTrack();
@@ -523,14 +729,14 @@ function createRoutineBlock(dayKey, routine, layoutEntry) {
   block.style.top = `${layoutEntry.top}px`;
   block.style.height = `${layoutEntry.height}px`;
   block.style.background = routine.color;
-  block.setAttribute("aria-label", `${displayStart(routine.start)} ${routine.title} 수정`);
+  block.setAttribute("aria-label", `${displayStart(routine.start)} ${routine.title} ${t("dialogEdit")}`);
 
   if (dayKey === DAYS[todayIndex()].key && end < currentMinutes()) block.classList.add("is-past");
 
   block.innerHTML = `
     <span class="routine-meta">
       <span class="time-label">${displayStart(routine.start)}</span>
-      <button class="routine-alarm-button${routine.alarm ? "" : " is-off"}" type="button" aria-label="${routine.title} 알람 ${routine.alarm ? "끄기" : "켜기"}">
+      <button class="routine-alarm-button${routine.alarm ? "" : " is-off"}" type="button" aria-label="${routine.title} ${t("alarmUse")}">
         <img class="alarm-icon" src="./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}" alt="" aria-hidden="true">
       </button>
     </span>
@@ -542,7 +748,7 @@ function createRoutineBlock(dayKey, routine, layoutEntry) {
     event.stopPropagation();
     clearLongPress();
     toggleRoutineAlarm(dayKey, routine.id).catch(() => {
-      alert("알람 설정을 변경하지 못했습니다.");
+      alert(t("alarmChangeFail"));
     });
   });
 
@@ -618,7 +824,7 @@ async function toggleRoutineAlarm(dayKey, routineId) {
     const icon = block.querySelector(".alarm-icon");
     if (!button || !icon) return;
     button.classList.toggle("is-off", !routine.alarm);
-    button.setAttribute("aria-label", `${routine.title} 알람 ${routine.alarm ? "끄기" : "켜기"}`);
+    button.setAttribute("aria-label", `${routine.title} ${t("alarmUse")}`);
     icon.src = `./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}`;
   });
   checkDueAlarms();
@@ -649,8 +855,8 @@ function applySelectionState() {
 
 function updateLabels() {
   const day = activeDay();
-  dayTitleWindow.setAttribute("aria-label", `${day.ko} ${day.en}`);
-  $("#menuDayLabel").textContent = "손가락으로 좌우 스와이프";
+  dayTitleWindow.setAttribute("aria-label", dayLabel(day));
+  $("#menuDayLabel").textContent = t("swipeHint");
   $("#menuNow").textContent = displayClock(true);
 }
 
@@ -825,7 +1031,7 @@ function currentSlideElement() {
 
 function modalDayLabel() {
   const day = DAYS[modalDayIndex];
-  $("#modalDayLabel").textContent = `${day.ko} ${day.en}`;
+  $("#modalDayLabel").textContent = dayLabel(day);
   $("#dayInput").value = day.key;
 }
 
@@ -845,7 +1051,7 @@ function openEditor(dayKey = activeDay().key, routine = null, defaults = {}) {
   $("#colorInput").value = routine?.color ?? "#4f8da3";
   $("#alarmInput").checked = Boolean(routine?.alarm);
   $("#deleteRoutine").hidden = !routine;
-  $("#dialogTitle").textContent = routine ? "루틴 수정" : "루틴 등록";
+  $("#dialogTitle").textContent = routine ? t("dialogEdit") : t("dialogCreate");
   modalDayLabel();
   document.body.classList.add("modal-open");
   dialog.showModal();
@@ -859,7 +1065,7 @@ function shiftModalDay(amount) {
 
 function validateTime(start, end) {
   if (toMinutes(start) >= toMinutes(end)) {
-    alert("종료시간은 시작시간보다 늦어야 합니다.");
+    alert(t("endAfterStart"));
     return false;
   }
   return true;
@@ -887,7 +1093,7 @@ async function upsertRoutine() {
 
   if (!validateTime(start, end)) return false;
   if (hasOverlappingRoutine(dayKey, id, start, end)) {
-    alert("이미 등록된 일정과 시간이 겹칩니다.");
+    alert(t("overlap"));
     return false;
   }
   if (alarm && !(await ensureAlarmPermission())) return false;
@@ -923,9 +1129,9 @@ function shareText() {
   return DAYS.map((day) => {
     const items = sorted(day.key);
     const body = items.length
-      ? items.map((routine) => `- ${routine.start}~${routine.end} ${routine.title}${routine.alarm ? " (알람)" : ""}`).join("\n")
-      : "- 비어있음";
-    return `${day.ko} ${day.en}\n${body}`;
+      ? items.map((routine) => `- ${routine.start}~${routine.end} ${routine.title}${routine.alarm ? ` (${t("alarmUse")})` : ""}`).join("\n")
+      : `- ${t("empty")}`;
+    return `${dayLabel(day)}\n${body}`;
   }).join("\n\n");
 }
 
@@ -975,7 +1181,7 @@ async function importRoutineFile(file) {
     setScreen("day");
     checkDueAlarms();
   } catch {
-    alert("루틴 파일을 불러오지 못했습니다.");
+    alert(t("loadFail"));
   }
 }
 
@@ -992,6 +1198,37 @@ async function shareAll(trigger = $("#menuShare")) {
   window.setTimeout(() => {
     label.textContent = original;
   }, 1400);
+}
+
+async function installApp() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => null);
+    deferredInstallPrompt = null;
+    return;
+  }
+
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  alert(isStandalone ? t("installAlready") : t("installHelp"));
+}
+
+function openSettingsDialog() {
+  document.body.classList.add("modal-open");
+  settingsDialog.showModal();
+}
+
+function openContactDialog() {
+  settingsDialog.close("contact");
+  document.body.classList.add("modal-open");
+  contactDialog.showModal();
+}
+
+function setLanguage(language) {
+  if (!I18N[language]) return;
+  currentLanguage = language;
+  localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  applyLanguage();
+  render();
 }
 
 function installPressFeedback() {
@@ -1017,19 +1254,21 @@ $("#tutorialStart").addEventListener("keydown", (event) => {
 $("#backToMenu").addEventListener("click", () => setScreen("menu"));
 $("#addRoutine").addEventListener("click", () => openEditor());
 $("#goToday").addEventListener("click", showToday);
-$("#menuShare").addEventListener("click", (event) => shareAll(event.currentTarget).catch(() => alert("공유를 완료하지 못했습니다.")));
+$("#menuShare").addEventListener("click", (event) => shareAll(event.currentTarget).catch(() => alert(t("shareFail"))));
 $("#exportRoutines").addEventListener("click", exportRoutineFile);
 $("#importRoutines").addEventListener("click", () => $("#importFile").click());
-$("#creatorContact").addEventListener("click", () => {
-  document.body.classList.add("modal-open");
-  contactDialog.showModal();
+$("#installApp").addEventListener("click", () => installApp().catch(() => alert(t("installHelp"))));
+$("#openSettings").addEventListener("click", openSettingsDialog);
+$("#creatorContact").addEventListener("click", openContactDialog);
+document.querySelectorAll("input[name='language']").forEach((input) => {
+  input.addEventListener("change", () => setLanguage(input.value));
 });
 $("#importFile").addEventListener("change", (event) => {
   importRoutineFile(event.target.files?.[0]);
   event.target.value = "";
 });
 $("#resetAll").addEventListener("click", () => {
-  if (!confirm("저장된 모든 루틴을 초기화할까요?")) return;
+  if (!confirm(t("resetConfirm"))) return;
   routines = emptyRoutines();
   saveRoutines();
   selectedGapId = null;
@@ -1037,6 +1276,7 @@ $("#resetAll").addEventListener("click", () => {
   activeDayIndex = todayIndex();
   render();
   setScreen("menu");
+  settingsDialog.close("reset");
 });
 $("#resetDemo").addEventListener("click", () => {
   routines = structuredClone(demoRoutines);
@@ -1046,6 +1286,7 @@ $("#resetDemo").addEventListener("click", () => {
   selectedRoutineId = null;
   setScreen("day");
   render();
+  settingsDialog.close("sample");
 });
 $("#modalPrevDay").addEventListener("click", () => shiftModalDay(-1));
 $("#modalNextDay").addEventListener("click", () => shiftModalDay(1));
@@ -1059,6 +1300,12 @@ dialog.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close("cancel");
 });
 dialog.addEventListener("close", () => {
+  document.body.classList.remove("modal-open");
+});
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target === settingsDialog) settingsDialog.close("cancel");
+});
+settingsDialog.addEventListener("close", () => {
   document.body.classList.remove("modal-open");
 });
 contactDialog.addEventListener("click", (event) => {
@@ -1095,9 +1342,14 @@ window.addEventListener("focus", checkDueAlarms);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) checkDueAlarms();
 });
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+});
 
 registerServiceWorker();
 installPressFeedback();
 render();
+applyLanguage();
 checkDueAlarms();
 setScreen("menu");

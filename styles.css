@@ -726,7 +726,8 @@ dialog::backdrop {
 }
 
 .routine-form,
-.contact-form {
+.contact-form,
+.settings-form {
   display: grid;
   gap: clamp(14px, 4vw, 18px);
   width: 100%;
@@ -736,7 +737,8 @@ dialog::backdrop {
 }
 
 .routine-form *,
-.contact-form * {
+.contact-form *,
+.settings-form * {
   min-width: 0;
 }
 
@@ -744,6 +746,8 @@ dialog::backdrop {
 .routine-form footer,
 .contact-form header,
 .contact-form footer,
+.settings-form header,
+.settings-form footer,
 .modal-day-switcher {
   display: flex;
   align-items: center;
@@ -751,12 +755,14 @@ dialog::backdrop {
 }
 
 .routine-form header,
-.contact-form header {
+.contact-form header,
+.settings-form header {
   justify-content: center;
 }
 
 .routine-form h2,
-.contact-form h2 {
+.contact-form h2,
+.settings-form h2 {
   margin: 0;
   color: var(--accent);
   font-size: clamp(1.35rem, 5vw, 2rem);
@@ -849,6 +855,90 @@ dialog::backdrop {
   word-break: break-word;
 }
 
+.settings-section {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 4vw, 1.25rem);
+}
+
+.language-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.language-options label {
+  display: grid;
+  min-height: 50px;
+  place-items: center;
+  border: 2px solid #363744;
+  border-radius: 10px;
+  background: #22232b;
+  color: var(--muted);
+  font-size: clamp(0.9rem, 3.4vw, 1rem);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.language-options label:has(input:checked) {
+  border-color: var(--accent-dim);
+  background: rgba(61, 133, 141, 0.32);
+  color: var(--text);
+}
+
+.settings-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 64px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent url("./btn_m_normal.svg") center / 100% 100% no-repeat;
+  color: var(--accent-dim);
+  font-size: clamp(1.05rem, 4vw, 1.35rem);
+  font-weight: 800;
+}
+
+.settings-actions button:active,
+.settings-actions button.is-pressed {
+  background-image: url("./btn_m_click.svg");
+  color: #071113;
+}
+
+.settings-actions .danger-menu-button {
+  background-image: url("./redbtn_m_normal.svg");
+  color: #b65555;
+}
+
+.settings-actions .danger-menu-button:active,
+.settings-actions .danger-menu-button.is-pressed {
+  background-image: url("./redbtn_m_click.svg");
+  color: #ffb6a9;
+}
+
+.settings-actions img {
+  width: 32px;
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .alarm-toggle {
   display: flex !important;
   align-items: center;
@@ -894,7 +984,8 @@ dialog::backdrop {
 }
 
 .routine-form footer,
-.contact-form footer {
+.contact-form footer,
+.settings-form footer {
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -904,6 +995,7 @@ dialog::backdrop {
 
 .routine-form footer button,
 .contact-form footer button,
+.settings-form footer button,
 .contact-mail-button {
   min-width: 0;
   min-height: 50px;

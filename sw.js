@@ -1,9 +1,9 @@
-const CACHE_NAME = "kuma-routine-cache-v20260517-2";
+const CACHE_NAME = "kuma-routine-cache-v20260517-3";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20260517-17",
-  "./app.js?v=20260517-17",
+  "./styles.css?v=20260517-19",
+  "./app.js?v=20260517-19",
   "./manifest.json",
   "./pwa-icon.svg",
   "./icon-192.png",
@@ -17,6 +17,7 @@ const APP_SHELL = [
   "./Icon_Download.svg",
   "./Icon_Menu.svg",
   "./Icon_Plus.svg",
+  "./Icon_Settings.svg",
   "./Icon_Share.svg",
   "./Icon_Smile.svg",
   "./Icon_Trash.svg",

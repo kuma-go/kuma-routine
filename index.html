@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./pwa-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./apple-touch-icon.png">
-    <link rel="stylesheet" href="./styles.css?v=20260517-17">
+    <link rel="stylesheet" href="./styles.css?v=20260517-19">
   </head>
   <body>
     <main class="app-shell">
@@ -20,53 +20,52 @@
         <!-- Replace this placeholder with your Google AdSense unit after approval. -->
       </section>
 
-      <section class="menu-screen" id="menuScreen" aria-label="메뉴">
+      <section class="menu-screen" id="menuScreen" aria-label="메뉴" data-i18n-attr="aria-label:menuAria">
         <p class="brand">
           <img src="./simbol.svg" alt="" aria-hidden="true">
           <span>KUMA routine</span>
         </p>
-        <div class="tutorial-card" id="tutorialStart" role="button" tabindex="0" aria-label="사용 안내를 보고 시작하기">
+        <div class="tutorial-card" id="tutorialStart" role="button" tabindex="0" aria-label="사용 안내를 보고 시작하기" data-i18n-attr="aria-label:tutorialAria">
           <div class="menu-control">
-            <strong>DAY 변경</strong>
+            <strong data-i18n="dayChange">DAY 변경</strong>
             <span id="menuDayLabel">손가락으로 좌우 스와이프</span>
           </div>
           <div class="menu-time">
-            <span>정오 표시</span>
+            <span data-i18n="noonDisplay">정오 표시</span>
             <small>오전(AM)<br>오후(PM)</small>
             <i></i>
-            <span>현재 시간</span>
+            <span data-i18n="currentTime">현재 시간</span>
             <b id="menuNow">1:15</b>
           </div>
         </div>
         <div class="menu-action-area">
           <div class="menu-actions">
-            <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span>공유하기</span></button>
-            <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span>저장하기</span></button>
-            <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>불러오기</span></button>
-            <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span>초기화</span></button>
-            <button id="resetDemo" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span>예시</span></button>
-            <button class="menu-link-button" id="creatorContact" type="button"><img src="./Icon_Smile.svg" alt="" aria-hidden="true"><span>제작자/문의</span></button>
+            <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span data-i18n="share">공유하기</span></button>
+            <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span data-i18n="saveFile">저장하기</span></button>
+            <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span data-i18n="loadFile">불러오기</span></button>
+            <button id="installApp" type="button"><img src="./pwa-icon.svg" alt="" aria-hidden="true"><span data-i18n="installApp">앱아이콘 추가</span></button>
+            <button id="openSettings" type="button"><img src="./Icon_Settings.svg" alt="" aria-hidden="true"><span data-i18n="settings">설정</span></button>
           </div>
-          <button class="start-button" id="openDay" type="button">시작하기</button>
+          <button class="start-button" id="openDay" type="button" data-i18n="start">시작하기</button>
         </div>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
       </section>
 
-      <section class="day-screen" id="dayScreen" aria-label="요일별 루틴 화면" hidden>
+      <section class="day-screen" id="dayScreen" aria-label="요일별 루틴 화면" data-i18n-attr="aria-label:dayScreenAria" hidden>
         <div class="day-topbar">
           <header class="day-header">
-            <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴">
+            <button class="icon-button menu-button" id="backToMenu" type="button" aria-label="메뉴" data-i18n-attr="aria-label:menuAria">
               <img src="./Icon_Menu.svg" alt="" aria-hidden="true">
             </button>
             <div class="day-title-window" aria-live="polite">
               <div class="day-title-track" id="dayTitleTrack"></div>
             </div>
-            <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가">
+            <button class="icon-button add-button" id="addRoutine" type="button" aria-label="루틴 추가" data-i18n-attr="aria-label:addRoutine">
               <img src="./Icon_Plus.svg" alt="" aria-hidden="true">
             </button>
           </header>
           <div class="day-actions">
-            <button id="goToday" type="button"><img src="./Icon_Clock.svg" alt="" aria-hidden="true"><span>현재로</span></button>
+            <button id="goToday" type="button"><img src="./Icon_Clock.svg" alt="" aria-hidden="true"><span data-i18n="goCurrent">현재로</span></button>
           </div>
         </div>
         <section class="day-scroller" id="dayScroller" aria-label="요일별 루틴" tabindex="0"></section>
@@ -81,42 +80,69 @@
 
         <input id="routineId" type="hidden">
         <div class="modal-day-switcher">
-          <button class="icon-button" id="modalPrevDay" type="button" aria-label="이전 요일">
+          <button class="icon-button" id="modalPrevDay" type="button" aria-label="이전 요일" data-i18n-attr="aria-label:prevDay">
             <span aria-hidden="true">&#8249;</span>
           </button>
           <strong id="modalDayLabel">월 MON</strong>
-          <button class="icon-button" id="modalNextDay" type="button" aria-label="다음 요일">
+          <button class="icon-button" id="modalNextDay" type="button" aria-label="다음 요일" data-i18n-attr="aria-label:nextDay">
             <span aria-hidden="true">&#8250;</span>
           </button>
         </div>
         <input id="dayInput" type="hidden">
         <div class="time-grid">
           <label>
-            시작시간
+            <span data-i18n="startTime">시작시간</span>
             <input id="startInput" type="time" step="300" required>
           </label>
           <label>
-            종료시간
+            <span data-i18n="endTime">종료시간</span>
             <input id="endInput" type="time" step="300" required>
           </label>
         </div>
         <label>
-          내용
-          <input id="titleInput" type="text" maxlength="24" placeholder="예: 학교" required>
+          <span data-i18n="content">내용</span>
+          <input id="titleInput" type="text" maxlength="24" placeholder="예: 학교" data-i18n-attr="placeholder:titlePlaceholder" required>
         </label>
         <label>
-          색상
+          <span data-i18n="color">색상</span>
           <input id="colorInput" type="color" value="#4f8da3">
         </label>
         <label class="alarm-toggle">
           <input id="alarmInput" type="checkbox">
-          <span><img src="./Icon_Clock.svg" alt="" aria-hidden="true"> 알람 사용</span>
+          <span><img src="./Icon_Clock.svg" alt="" aria-hidden="true"> <span data-i18n="useAlarm">알람 사용</span></span>
         </label>
 
         <footer>
-          <button class="danger-button" id="deleteRoutine" value="delete" type="button">삭제</button>
-          <button class="cancel-button" value="cancel" type="submit" formnovalidate>취소</button>
-          <button class="save-button" id="saveRoutine" value="default" type="submit">저장</button>
+          <button class="danger-button" id="deleteRoutine" value="delete" type="button" data-i18n="delete">삭제</button>
+          <button class="cancel-button" value="cancel" type="submit" formnovalidate data-i18n="cancel">취소</button>
+          <button class="save-button" id="saveRoutine" value="default" type="submit" data-i18n="save">저장</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" class="settings-form" id="settingsForm">
+        <header>
+          <h2 data-i18n="settings">설정</h2>
+        </header>
+
+        <section class="settings-section" aria-labelledby="languageTitle">
+          <h3 id="languageTitle" data-i18n="language">언어</h3>
+          <div class="language-options" role="radiogroup" aria-label="언어 선택" data-i18n-attr="aria-label:language">
+            <label><input type="radio" name="language" value="ko"><span>한국어</span></label>
+            <label><input type="radio" name="language" value="en"><span>English</span></label>
+            <label><input type="radio" name="language" value="ja"><span>日本語</span></label>
+          </div>
+        </section>
+
+        <div class="settings-actions">
+          <button id="resetDemo" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span data-i18n="makeSample">샘플 만들기</span></button>
+          <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span data-i18n="reset">초기화</span></button>
+          <button id="creatorContact" type="button"><img src="./Icon_Smile.svg" alt="" aria-hidden="true"><span data-i18n="creatorContact">제작자/문의</span></button>
+        </div>
+
+        <footer>
+          <button class="cancel-button" value="cancel" type="submit" data-i18n="close">닫기</button>
         </footer>
       </form>
     </dialog>
@@ -124,7 +150,7 @@
     <dialog id="contactDialog">
       <form method="dialog" class="contact-form" id="contactForm">
         <header>
-          <h2>제작자/문의</h2>
+          <h2 data-i18n="creatorContact">제작자/문의</h2>
         </header>
 
         <div class="contact-symbol" aria-hidden="true">
@@ -132,18 +158,18 @@
         </div>
 
         <div class="contact-info">
-          <p><span>제작자</span><strong>고슬기</strong></p>
+          <p><span data-i18n="creator">제작자</span><strong>고슬기</strong></p>
           <p><span>Email</span><strong>carksk@naver.com</strong></p>
           <p><span>Kakao ID</span><strong>carksk2</strong></p>
         </div>
 
         <footer>
-          <button class="cancel-button" value="cancel" type="submit">닫기</button>
-          <a class="contact-mail-button" id="contactMail" href="mailto:carksk@naver.com?subject=KUMA%20routine%20문의&body=제작자%20고슬기%0AEmail%3A%20carksk%40naver.com%0AKakao%20ID%3A%20carksk2%0A%0A문의내용%3A%20">메일 보내기</a>
+          <button class="cancel-button" value="cancel" type="submit" data-i18n="close">닫기</button>
+          <a class="contact-mail-button" id="contactMail" href="mailto:carksk@naver.com?subject=KUMA%20routine%20문의&body=제작자%20고슬기%0AEmail%3A%20carksk%40naver.com%0AKakao%20ID%3A%20carksk2%0A%0A문의내용%3A%20" data-i18n="sendMail">메일 보내기</a>
         </footer>
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260517-17"></script>
+    <script src="./app.js?v=20260517-19"></script>
   </body>
 </html>
