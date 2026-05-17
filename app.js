@@ -171,7 +171,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-16", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-17", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
@@ -342,13 +342,13 @@ function createTimelineLayout(dayKey) {
       y += height;
     }
 
-    const routineStart = Math.max(start, cursor);
-    const routineEnd = Math.max(end, routineStart + 15);
+    const routineStart = start;
+    const routineEnd = end;
     const duration = routineEnd - routineStart;
     const height = routineVisualHeight(routine, duration);
     items.push({ type: "routine", routine, start: routineStart, end: routineEnd, top: y, height });
     y += height;
-    cursor = Math.max(cursor, end, routineEnd);
+    cursor = Math.max(cursor, end);
   }
 
   if (cursor < 1440) {
