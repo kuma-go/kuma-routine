@@ -1,19 +1,4 @@
 :root {
-body[data-theme="light"] {
-  color-scheme: light;
-
-  --bg: #f8f2f7;
-  --surface: #ffffff;
-  --surface-2: #f2eefb;
-  --text: #34323f;
-  --muted: #9a96aa;
-  --line: #e8e2f1;
-  --accent: #9b7cf6;
-  --accent-dim: #8f74e8;
-  --now: #ff8d7a;
-  --danger: #ef6f7d;
-}
-
   color-scheme: dark;
   --bg: #131319;
   --surface: #1d1d24;
@@ -31,6 +16,20 @@ body[data-theme="light"] {
   --page-x: clamp(38px, 11vw, 50px);
   --ad-x: clamp(14px, 4vw, 24px);
   --slide-gap: clamp(14px, 4vw, 24px);
+}
+
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f8f2f7;
+  --surface: #ffffff;
+  --surface-2: #f2eefb;
+  --text: #34323f;
+  --muted: #9a96aa;
+  --line: #e8e2f1;
+  --accent: #9b7cf6;
+  --accent-dim: #8f74e8;
+  --now: #ff8d7a;
+  --danger: #ef6f7d;
 }
 
 * {
