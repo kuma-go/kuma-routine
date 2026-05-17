@@ -11,7 +11,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./pwa-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./apple-touch-icon.png">
-    <link rel="stylesheet" href="./styles.css?v=20260517-23">
+    <link rel="stylesheet" href="./styles.css?v=20260517-24">
   </head>
   <body>
     <main class="app-shell">
@@ -105,7 +105,10 @@
         </label>
         <label>
           <span data-i18n="color">색상</span>
-          <input id="colorInput" type="color" value="#4f8da3">
+          <div class="color-row">
+            <input id="colorInput" type="color" value="#4f8da3">
+            <button class="color-random-button" id="randomColor" type="button" data-i18n="randomColor">랜덤</button>
+          </div>
         </label>
         <label class="alarm-toggle">
           <input id="alarmInput" type="checkbox">
@@ -187,6 +190,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260517-23"></script>
+    <script src="./app.js?v=20260517-24"></script>
   </body>
 </html>

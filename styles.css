@@ -169,11 +169,16 @@ button:active,
   padding: 0;
   border: 0;
   border-radius: clamp(28px, 9vw, 40px);
-  background: #1d1d1d url("./tip.svg") center / 100% 100% no-repeat;
+  background: var(--surface) url("./tip.svg") center / 100% 100% no-repeat;
   color: var(--text);
   cursor: pointer;
   overflow: hidden;
   appearance: none;
+}
+
+body[data-theme="light"] .tutorial-card {
+  background-image: url("./tip-light.svg");
+  box-shadow: 0 18px 42px rgba(158, 145, 189, 0.16);
 }
 
 .tutorial-card:active {
@@ -1002,6 +1007,30 @@ dialog::backdrop {
 .routine-form input[type="color"] {
   height: 64px;
   padding: 8px;
+}
+
+.color-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.34fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.color-random-button {
+  min-height: 64px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--accent-dim);
+  font-size: clamp(0.95rem, 3.5vw, 1.08rem);
+  font-weight: 850;
+}
+
+.color-random-button:active,
+.color-random-button.is-pressed {
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent-dim) 20%, var(--surface-2));
+  color: var(--text);
 }
 
 .contact-symbol {

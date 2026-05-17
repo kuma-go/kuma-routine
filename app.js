@@ -75,6 +75,7 @@ const I18N = {
     theme: "화면 모드",
     darkTheme: "어두운 화면",
     lightTheme: "밝은 화면",
+    randomColor: "랜덤",
   },
   en: {
     addRoutine: "Add routine",
@@ -130,6 +131,7 @@ const I18N = {
     theme: "Theme",
     darkTheme: "Dark",
     lightTheme: "Light",
+    randomColor: "Random",
   },
   ja: {
     addRoutine: "ルーティン追加",
@@ -185,6 +187,7 @@ const I18N = {
     theme: "画面モード",
     darkTheme: "ダーク",
     lightTheme: "ライト",
+    randomColor: "ランダム",
   },
 };
 
@@ -209,6 +212,19 @@ const demoRoutines = {
   sat: [],
   sun: [],
 };
+
+const ROUTINE_COLORS = [
+  "#5c3620",
+  "#8a9848",
+  "#3d60a0",
+  "#4f8da3",
+  "#984d94",
+  "#ff6b00",
+  "#f9c80e",
+  "#4f9d69",
+  "#6a4c93",
+  "#d1495b",
+];
 
 let routines = loadRoutines();
 let activeDayIndex = todayIndex();
@@ -383,6 +399,14 @@ function toTime(minutes) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function defaultEndForStart(start) {
+  return toTime(toMinutes(start) + 30);
+}
+
+function randomRoutineColor() {
+  return ROUTINE_COLORS[Math.floor(Math.random() * ROUTINE_COLORS.length)];
+}
+
 function displayStart(value) {
   const minutes = toMinutes(value);
   const hour24 = Math.floor(minutes / 60);
@@ -419,7 +443,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-23", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-24", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
@@ -665,7 +689,7 @@ function render() {
       longPressTimer = window.setTimeout(() => {
         openEditor(day.key, null, {
           start: toTime(start),
-          end: toTime(Math.min(start + 60, 1439)),
+          end: defaultEndForStart(toTime(start)),
         });
       }, 520);
     });
@@ -707,7 +731,7 @@ function render() {
         if (pressWasSelected) {
           openEditor(day.key, null, {
             start: toTime(gap.start),
-            end: toTime(Math.min(gap.end, gap.start + 60)),
+            end: toTime(Math.min(gap.end, gap.start + 30)),
           });
         }
       });
@@ -720,7 +744,7 @@ function render() {
           suppressNextClick = true;
           openEditor(day.key, null, {
             start: toTime(gap.start),
-            end: toTime(Math.min(gap.end, gap.start + 60)),
+            end: toTime(Math.min(gap.end, gap.start + 30)),
           });
         }, 520);
       });
@@ -1085,12 +1109,13 @@ function roundedTimeFromPoint(timeline, clientY) {
 }
 
 function openEditor(dayKey = activeDay().key, routine = null, defaults = {}) {
+  const start = routine?.start ?? defaults.start ?? "08:00";
   modalDayIndex = DAYS.findIndex((day) => day.key === dayKey);
   $("#routineId").value = routine?.id ?? "";
-  $("#startInput").value = routine?.start ?? defaults.start ?? "08:00";
-  $("#endInput").value = routine?.end ?? defaults.end ?? "09:00";
+  $("#startInput").value = start;
+  $("#endInput").value = routine?.end ?? defaults.end ?? defaultEndForStart(start);
   $("#titleInput").value = routine?.title ?? "";
-  $("#colorInput").value = routine?.color ?? "#4f8da3";
+  $("#colorInput").value = routine?.color ?? defaults.color ?? randomRoutineColor();
   $("#alarmInput").checked = Boolean(routine?.alarm);
   $("#deleteRoutine").hidden = !routine;
   $("#dialogTitle").textContent = routine ? t("dialogEdit") : t("dialogCreate");
@@ -1103,6 +1128,12 @@ function openEditor(dayKey = activeDay().key, routine = null, defaults = {}) {
 function shiftModalDay(amount) {
   modalDayIndex = (modalDayIndex + amount + DAYS.length) % DAYS.length;
   modalDayLabel();
+}
+
+function setEndThirtyMinutesAfterStart() {
+  const start = $("#startInput").value;
+  if (!start) return;
+  $("#endInput").value = defaultEndForStart(start);
 }
 
 function validateTime(start, end) {
@@ -1506,6 +1537,11 @@ $("#resetDemo").addEventListener("click", () => {
 });
 $("#modalPrevDay").addEventListener("click", () => shiftModalDay(-1));
 $("#modalNextDay").addEventListener("click", () => shiftModalDay(1));
+$("#startInput").addEventListener("change", setEndThirtyMinutesAfterStart);
+$("#startInput").addEventListener("input", setEndThirtyMinutesAfterStart);
+$("#randomColor").addEventListener("click", () => {
+  $("#colorInput").value = randomRoutineColor();
+});
 $("#deleteRoutine").addEventListener("click", deleteRoutine);
 scroller.addEventListener("scroll", handleDayScroll);
 scroller.addEventListener("pointerdown", rememberPointerStart, { capture: true });
