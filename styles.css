@@ -946,6 +946,7 @@ dialog::backdrop {
 
 .settings-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
 }
@@ -954,12 +955,29 @@ dialog::backdrop {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(10px, 3vw, 16px);
+  gap: 10px;
+
   width: 100%;
-  min-height: clamp(76px, 16vw, 92px);
-  padding: 12px clamp(16px, 5vw, 28px);
-  font-size: clamp(1.05rem, 4vw, 1.35rem);
+  height: 72px;
+  min-height: 72px;
+
+  padding: 10px 14px;
+  font-size: clamp(0.95rem, 3vw, 1.15rem);
   font-weight: 800;
+}
+
+.settings-actions span {
+  flex: 0 1 auto;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.settings-actions img {
+  width: 32px;
+  height: auto;
+  flex: 0 0 auto;
 }
 
 .settings-actions span {
