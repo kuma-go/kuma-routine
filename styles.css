@@ -10,6 +10,15 @@
   --accent-dim: #3d858d;
   --now: #ff5100;
   --danger: #914f3e;
+  --topbar-bg: rgba(19, 19, 25, 0.96);
+  --topbar-shadow: 0 12px 24px rgba(19, 19, 25, 0.76);
+  --timeline-bg: rgba(255, 255, 255, 0.035);
+  --press-ring: rgba(61, 133, 141, 0.22);
+  --button-light-bg: #ffffff;
+  --button-light-active-bg: #f2eefb;
+  --button-light-border: #e1d9f3;
+  --button-light-shadow: 0 10px 24px rgba(139, 122, 185, 0.14);
+  --button-light-active-shadow: 0 6px 16px rgba(139, 122, 185, 0.18);
   --hour: clamp(70px, 19vw, 100px);
   --gutter: clamp(54px, 14vw, 96px);
   --card-left: clamp(8px, 2.6vw, 18px);
@@ -30,6 +39,10 @@ body[data-theme="light"] {
   --accent-dim: #8f74e8;
   --now: #ff8d7a;
   --danger: #ef6f7d;
+  --topbar-bg: rgba(248, 242, 247, 0.94);
+  --topbar-shadow: 0 12px 28px rgba(158, 145, 189, 0.2);
+  --timeline-bg: rgba(80, 67, 112, 0.055);
+  --press-ring: rgba(143, 116, 232, 0.2);
 }
 
 * {
@@ -52,34 +65,6 @@ body {
 body.modal-open {
   overflow: hidden;
   touch-action: none;
-}
-
-body[data-theme="light"] .settings-actions button {
-  border: 2px solid #e3dcf3;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #8f74e8;
-  box-shadow: 0 10px 24px rgba(139, 122, 185, 0.14);
-  border-image-source: none;
-}
-
-body[data-theme="light"] .settings-actions button:active,
-body[data-theme="light"] .settings-actions button.is-pressed {
-  background: #f2eefb;
-  color: #7a5ee8;
-  box-shadow: 0 6px 16px rgba(139, 122, 185, 0.18);
-}
-
-body[data-theme="light"] .settings-actions .danger-menu-button {
-  border-color: #ffd6dc;
-  background: #fff4f6;
-  color: #ef6f7d;
-}
-
-body[data-theme="light"] .settings-actions .danger-menu-button:active,
-body[data-theme="light"] .settings-actions .danger-menu-button.is-pressed {
-  background: #ffe8ec;
-  color: #d94f61;
 }
 
 button,
@@ -118,7 +103,7 @@ button:active,
 [role="button"]:active {
   transform: translateY(2px) scale(0.965);
   filter: brightness(1.12);
-  box-shadow: 0 0 0 5px rgba(61, 133, 141, 0.22);
+  box-shadow: 0 0 0 5px var(--press-ring);
 }
 
 [hidden] {
@@ -443,8 +428,8 @@ button:active,
   align-self: start;
   margin-inline: calc(var(--page-x) * -1);
   padding: clamp(18px, 5vw, 42px) var(--page-x) 14px;
-  background: rgba(19, 19, 25, 0.96);
-  box-shadow: 0 12px 24px rgba(19, 19, 25, 0.76);
+  background: var(--topbar-bg);
+  box-shadow: var(--topbar-shadow);
   transform: translateZ(0);
   animation: topbar-enter 280ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
 }
@@ -559,6 +544,123 @@ button:active,
   height: auto;
 }
 
+body[data-theme="light"] .menu-actions button,
+body[data-theme="light"] .menu-actions .menu-link-button,
+body[data-theme="light"] .menu-action-area > .install-button,
+body[data-theme="light"] .day-actions button,
+body[data-theme="light"] .settings-actions button {
+  border: 3px solid var(--button-light-border);
+  border-radius: 14px;
+  border-image-source: none;
+  background: var(--button-light-bg);
+  color: var(--accent-dim);
+  box-shadow: var(--button-light-shadow);
+}
+
+body[data-theme="light"] .menu-actions button:active,
+body[data-theme="light"] .menu-actions .menu-link-button:active,
+body[data-theme="light"] .menu-action-area > .install-button:active,
+body[data-theme="light"] .day-actions button:active,
+body[data-theme="light"] .settings-actions button:active,
+body[data-theme="light"] .menu-actions button.is-pressed,
+body[data-theme="light"] .menu-actions .menu-link-button.is-pressed,
+body[data-theme="light"] .menu-action-area > .install-button.is-pressed,
+body[data-theme="light"] .day-actions button.is-pressed,
+body[data-theme="light"] .settings-actions button.is-pressed {
+  background: var(--button-light-active-bg);
+  border-color: var(--accent-dim);
+  color: #745ad7;
+  box-shadow: var(--button-light-active-shadow);
+}
+
+body[data-theme="light"] .menu-action-area > .start-button {
+  border: 3px solid var(--accent-dim);
+  border-image-source: none;
+  background: var(--accent-dim);
+  color: #ffffff;
+  box-shadow: 0 12px 26px rgba(143, 116, 232, 0.24);
+}
+
+body[data-theme="light"] .menu-action-area > .start-button:active,
+body[data-theme="light"] .menu-action-area > .start-button.is-pressed {
+  background: #ffffff;
+  color: var(--accent-dim);
+}
+
+body[data-theme="light"] .menu-actions .danger-menu-button,
+body[data-theme="light"] .settings-actions .danger-menu-button {
+  border-color: #ffd6dc;
+  background: #fff4f6;
+  color: var(--danger);
+}
+
+body[data-theme="light"] .menu-actions .danger-menu-button:active,
+body[data-theme="light"] .settings-actions .danger-menu-button:active,
+body[data-theme="light"] .menu-actions .danger-menu-button.is-pressed,
+body[data-theme="light"] .settings-actions .danger-menu-button.is-pressed {
+  border-color: #f7a5af;
+  background: #ffe8ec;
+  color: #d94f61;
+}
+
+body[data-theme="light"] .icon-button {
+  border: 3px solid #d8cfee;
+  background: #ffffff;
+  color: var(--accent-dim);
+  box-shadow: 0 8px 20px rgba(143, 116, 232, 0.16);
+}
+
+body[data-theme="light"] .icon-button:active,
+body[data-theme="light"] .icon-button.is-pressed {
+  border-color: var(--accent-dim);
+  background: var(--accent-dim);
+  color: #ffffff;
+  box-shadow: 0 0 0 6px rgba(143, 116, 232, 0.16);
+}
+
+body[data-theme="light"] .routine-form input,
+body[data-theme="light"] .alarm-toggle,
+body[data-theme="light"] .language-options label,
+body[data-theme="light"] .theme-options label,
+body[data-theme="light"] .contact-info {
+  box-shadow: inset 0 0 0 1px rgba(143, 116, 232, 0.05);
+}
+
+body[data-theme="light"] .contact-mail-button,
+body[data-theme="light"] .save-button {
+  background: var(--accent-dim);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(143, 116, 232, 0.2);
+}
+
+body[data-theme="light"] .contact-mail-button:active,
+body[data-theme="light"] .contact-mail-button.is-pressed,
+body[data-theme="light"] .save-button:active {
+  background: var(--accent);
+}
+
+body[data-theme="light"] .cancel-button {
+  border-color: #e1d9f3;
+  background: #f2eefb;
+  color: #6f6785;
+}
+
+body[data-theme="light"] .cancel-button:active {
+  background: #e8defc;
+  color: #4c426c;
+}
+
+body[data-theme="light"] .danger-button {
+  border-color: #f7a5af !important;
+  background: #fff4f6;
+  color: #d94f61;
+}
+
+body[data-theme="light"] .danger-button:active {
+  background: var(--danger);
+  color: #ffffff;
+}
+
 .day-scroller {
   display: grid;
   grid-auto-columns: 100%;
@@ -606,7 +708,7 @@ button:active,
   left: calc(var(--gutter) + var(--card-left));
   right: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--timeline-bg);
 }
 
 .timeline.is-empty::before {

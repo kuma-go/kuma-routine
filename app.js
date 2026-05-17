@@ -257,6 +257,10 @@ function loadTheme() {
 
 function applyTheme() {
   document.body.dataset.theme = currentTheme;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) {
+    themeMeta.content = currentTheme === "light" ? "#f8f2f7" : "#131319";
+  }
 
   document.querySelectorAll('input[name="theme"]').forEach((input) => {
     input.checked = input.value === currentTheme;
@@ -415,7 +419,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-21", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-23", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
