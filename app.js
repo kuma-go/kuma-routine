@@ -12,6 +12,7 @@ const STORAGE_KEY = "kuma-routine.v5";
 const LOOP_WEEKS = 5;
 const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
 const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
+const ALARM_CHECK_INTERVAL_MS = 15000;
 const HOUR_HEIGHT = () => Math.min(100, Math.max(70, window.innerWidth * 0.19));
 const MIN_ROUTINE_HEIGHT = () => Math.min(118, Math.max(88, window.innerWidth * 0.22));
 const MIN_GAP_HEIGHT = () => Math.min(86, Math.max(58, window.innerWidth * 0.15));
@@ -53,6 +54,8 @@ let pointerMoved = false;
 let mouseDrag = null;
 let lastViewportWidth = window.innerWidth;
 let renderedTodayIndex = todayIndex();
+let warnedNotificationFallback = false;
+const firedAlarmKeys = loadFiredAlarmKeys();
 
 const menuScreen = $("#menuScreen");
 const dayScreen = $("#dayScreen");
@@ -91,6 +94,23 @@ function normalizeRoutine(routine) {
 
 function saveRoutines() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(routines));
+}
+
+function loadFiredAlarmKeys() {
+  try {
+    return new Set(JSON.parse(sessionStorage.getItem("kuma-routine.firedAlarms") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberFiredAlarm(key) {
+  firedAlarmKeys.add(key);
+  try {
+    sessionStorage.setItem("kuma-routine.firedAlarms", JSON.stringify([...firedAlarmKeys].slice(-100)));
+  } catch {
+    // Session storage is best-effort only; duplicate protection still works in memory.
+  }
 }
 
 function todayIndex() {
@@ -133,6 +153,98 @@ function displayClock(includeSeconds = false) {
 function currentMinutes() {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
+}
+
+function localDateKey(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function notificationPermission() {
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return Promise.resolve("unsupported");
+  try {
+    return new Promise((resolve) => {
+      const request = Notification.requestPermission(resolve);
+      if (request?.then) request.then(resolve).catch(() => resolve(Notification.permission));
+    });
+  } catch {
+    return Promise.resolve(Notification.permission);
+  }
+}
+
+async function ensureAlarmPermission() {
+  const permission = notificationPermission();
+  if (permission === "granted") return true;
+  if (permission === "unsupported") {
+    if (!warnedNotificationFallback) {
+      warnedNotificationFallback = true;
+      alert("이 브라우저는 시스템 알림을 지원하지 않아서, 앱이 열려 있을 때 화면 알림으로 알려드릴게요.");
+    }
+    return true;
+  }
+  if (permission === "denied") {
+    alert("브라우저 알림 권한이 꺼져 있어요. 기기/브라우저 설정에서 알림을 허용한 뒤 다시 켜주세요.");
+    return false;
+  }
+
+  const nextPermission = await requestNotificationPermission();
+  if (nextPermission === "granted") return true;
+  alert("알람을 사용하려면 브라우저 알림 권한이 필요해요.");
+  return false;
+}
+
+function showAlarmToast(title, body) {
+  const toast = document.createElement("div");
+  toast.className = "alarm-toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span>`;
+  document.body.append(toast);
+  requestAnimationFrame(() => toast.classList.add("is-visible"));
+  window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+  }, 5200);
+}
+
+function notifyRoutine(dayKey, routine) {
+  const day = DAYS.find((item) => item.key === dayKey);
+  const title = "KUMA routine";
+  const body = `${day?.ko ?? ""} ${day?.en ?? ""} ${displayStart(routine.start)} ${routine.title}`;
+
+  if (notificationPermission() === "granted") {
+    try {
+      new Notification(title, {
+        body,
+        tag: `kuma-routine-${localDateKey()}-${dayKey}-${routine.id}`,
+        renotify: true,
+        silent: false,
+      });
+      return;
+    } catch {
+      // Fall through to the in-app toast when the browser blocks construction.
+    }
+  }
+  showAlarmToast(title, body);
+}
+
+function checkDueAlarms() {
+  const day = DAYS[todayIndex()];
+  const nowMinute = Math.floor(currentMinutes());
+  for (const routine of routines[day.key]) {
+    if (!routine.alarm || toMinutes(routine.start) !== nowMinute) continue;
+    const alarmKey = `${localDateKey()}-${day.key}-${routine.id}-${routine.start}`;
+    if (firedAlarmKeys.has(alarmKey)) continue;
+    rememberFiredAlarm(alarmKey);
+    notifyRoutine(day.key, routine);
+  }
 }
 
 function minutesToTop(minutes) {
@@ -401,7 +513,9 @@ function createRoutineBlock(dayKey, routine, layoutEntry) {
   alarmButton.addEventListener("click", (event) => {
     event.stopPropagation();
     clearLongPress();
-    toggleRoutineAlarm(dayKey, routine.id);
+    toggleRoutineAlarm(dayKey, routine.id).catch(() => {
+      alert("알람 설정을 변경하지 못했습니다.");
+    });
   });
 
   let pressWasSelected = false;
@@ -462,10 +576,13 @@ function createRoutineBlock(dayKey, routine, layoutEntry) {
   return block;
 }
 
-function toggleRoutineAlarm(dayKey, routineId) {
+async function toggleRoutineAlarm(dayKey, routineId) {
   const routine = routines[dayKey].find((item) => item.id === routineId);
   if (!routine) return;
-  routine.alarm = !routine.alarm;
+  const nextAlarm = !routine.alarm;
+  if (nextAlarm && !(await ensureAlarmPermission())) return;
+
+  routine.alarm = nextAlarm;
   saveRoutines();
   scroller.querySelectorAll(".routine-block").forEach((block) => {
     if (block.dataset.id !== routineId || block.dataset.day !== dayKey) return;
@@ -476,6 +593,7 @@ function toggleRoutineAlarm(dayKey, routineId) {
     button.setAttribute("aria-label", `${routine.title} 알람 ${routine.alarm ? "끄기" : "켜기"}`);
     icon.src = `./${routine.alarm ? "Icon_Bell_on.svg" : "BIcon_ell_off.svg"}`;
   });
+  checkDueAlarms();
 }
 
 function escapeHtml(value) {
@@ -730,7 +848,7 @@ function hasOverlappingRoutine(dayKey, id, start, end) {
   });
 }
 
-function upsertRoutine() {
+async function upsertRoutine() {
   const id = $("#routineId").value || crypto.randomUUID();
   const dayKey = $("#dayInput").value;
   const start = $("#startInput").value;
@@ -744,6 +862,7 @@ function upsertRoutine() {
     alert("이미 등록된 일정과 시간이 겹칩니다.");
     return false;
   }
+  if (alarm && !(await ensureAlarmPermission())) return false;
 
   for (const day of DAYS) {
     routines[day.key] = routines[day.key].filter((routine) => routine.id !== id);
@@ -755,6 +874,7 @@ function upsertRoutine() {
   selectedRoutineId = null;
   setScreen("day");
   render();
+  checkDueAlarms();
   return true;
 }
 
@@ -825,6 +945,7 @@ async function importRoutineFile(file) {
     selectedRoutineId = null;
     render();
     setScreen("day");
+    checkDueAlarms();
   } catch {
     alert("루틴 파일을 불러오지 못했습니다.");
   }
@@ -922,10 +1043,10 @@ $("#contactMail").addEventListener("click", () => {
   contactDialog.close("mail");
 });
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   if (event.submitter?.value === "cancel") return;
   event.preventDefault();
-  if (upsertRoutine()) dialog.close();
+  if (await upsertRoutine()) dialog.close();
 });
 
 window.addEventListener("resize", () => {
@@ -941,7 +1062,13 @@ window.addEventListener("resize", () => {
   requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
 });
 window.setInterval(updateLiveTime, 1000);
+window.setInterval(checkDueAlarms, ALARM_CHECK_INTERVAL_MS);
+window.addEventListener("focus", checkDueAlarms);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) checkDueAlarms();
+});
 
 installPressFeedback();
 render();
+checkDueAlarms();
 setScreen("menu");
