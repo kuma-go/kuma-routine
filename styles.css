@@ -1,4 +1,19 @@
 :root {
+body[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f8f2f7;
+  --surface: #ffffff;
+  --surface-2: #f2eefb;
+  --text: #34323f;
+  --muted: #9a96aa;
+  --line: #e8e2f1;
+  --accent: #9b7cf6;
+  --accent-dim: #8f74e8;
+  --now: #ff8d7a;
+  --danger: #ef6f7d;
+}
+
   color-scheme: dark;
   --bg: #131319;
   --surface: #1d1d24;
@@ -38,6 +53,34 @@ body {
 body.modal-open {
   overflow: hidden;
   touch-action: none;
+}
+
+body[data-theme="light"] .settings-actions button {
+  border: 2px solid #e3dcf3;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #8f74e8;
+  box-shadow: 0 10px 24px rgba(139, 122, 185, 0.14);
+  border-image-source: none;
+}
+
+body[data-theme="light"] .settings-actions button:active,
+body[data-theme="light"] .settings-actions button.is-pressed {
+  background: #f2eefb;
+  color: #7a5ee8;
+  box-shadow: 0 6px 16px rgba(139, 122, 185, 0.18);
+}
+
+body[data-theme="light"] .settings-actions .danger-menu-button {
+  border-color: #ffd6dc;
+  background: #fff4f6;
+  color: #ef6f7d;
+}
+
+body[data-theme="light"] .settings-actions .danger-menu-button:active,
+body[data-theme="light"] .settings-actions .danger-menu-button.is-pressed {
+  background: #ffe8ec;
+  color: #d94f61;
 }
 
 button,
@@ -762,7 +805,7 @@ dialog {
   border: 0;
   border-radius: 18px;
   padding: 0;
-  background: #17171d;
+  background: var(--surface);
   color: var(--text);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
 }
@@ -844,10 +887,10 @@ dialog::backdrop {
   inline-size: 100%;
   max-width: 100%;
   min-height: clamp(50px, 11vw, 58px);
-  border: 2px solid #363744;
+  border: 2px solid var(--line);
   border-radius: 10px;
   padding: 0 14px;
-  background: #22232b;
+  background: var(--surface-2);
   color: var(--text);
   font-size: clamp(1rem, 4vw, 1.35rem);
   user-select: text;
@@ -879,9 +922,9 @@ dialog::backdrop {
   display: grid;
   gap: 10px;
   padding: clamp(14px, 4vw, 18px);
-  border: 2px solid #363744;
+  border: 2px solid var(--line);
   border-radius: 12px;
-  background: #22232b;
+  background: var(--surface-2);
 }
 
 .contact-info p {
@@ -919,17 +962,37 @@ dialog::backdrop {
   gap: 8px;
 }
 
-.language-options label {
+.language-options label,
+.theme-options label {
   display: grid;
   min-height: 50px;
   place-items: center;
-  border: 2px solid #363744;
+  border: 2px solid var(--line);
   border-radius: 10px;
-  background: #22232b;
+  background: var(--surface-2);
   color: var(--muted);
   font-size: clamp(0.9rem, 3.4vw, 1rem);
   font-weight: 800;
   cursor: pointer;
+}
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.language-options label:has(input:checked),
+.theme-options label:has(input:checked) {
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent-dim) 22%, transparent);
+  color: var(--text);
 }
 
 .language-options input {
@@ -1011,9 +1074,9 @@ dialog::backdrop {
   justify-content: space-between;
   min-height: 58px;
   padding: 0 14px;
-  border: 2px solid #363744;
+  border: 2px solid var(--line);
   border-radius: 10px;
-  background: #22232b;
+  background: var(--surface-2);
 }
 
 .alarm-toggle input {

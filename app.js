@@ -10,6 +10,7 @@ const DAYS = [
 
 const STORAGE_KEY = "kuma-routine.v5";
 const LANGUAGE_STORAGE_KEY = "kuma-routine.language";
+const THEME_STORAGE_KEY = "kuma-routine.theme";
 const LOOP_WEEKS = 5;
 const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
 const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
@@ -71,6 +72,9 @@ const I18N = {
     empty: "비어있음",
     exportCalendar: "캘린더 내보내기",
     noAlarmCalendar: "알람이 켜진 루틴이 없어요.",
+    theme: "화면 모드",
+    darkTheme: "어두운 화면",
+    lightTheme: "밝은 화면",
   },
   en: {
     addRoutine: "Add routine",
@@ -123,6 +127,9 @@ const I18N = {
     empty: "Empty",
     exportCalendar: "Export calendar",
     noAlarmCalendar: "There are no routines with alarms enabled.",
+    theme: "Theme",
+    darkTheme: "Dark",
+    lightTheme: "Light",
   },
   ja: {
     addRoutine: "ルーティン追加",
@@ -175,6 +182,9 @@ const I18N = {
     empty: "空き",
     exportCalendar: "カレンダー出力",
     noAlarmCalendar: "アラームがオンのルーティンがありません。",
+    theme: "画面モード",
+    darkTheme: "ダーク",
+    lightTheme: "ライト",
   },
 };
 
@@ -218,6 +228,7 @@ let warnedNotificationFallback = false;
 let serviceWorkerRegistration = null;
 let deferredInstallPrompt = null;
 let currentLanguage = loadLanguage();
+let currentTheme = loadTheme();
 const firedAlarmKeys = loadFiredAlarmKeys();
 
 const menuScreen = $("#menuScreen");
@@ -237,6 +248,27 @@ function loadLanguage() {
   if (browserLanguage.startsWith("ja")) return "ja";
   if (browserLanguage.startsWith("en")) return "en";
   return "ko";
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === "light" ? "light" : "dark";
+}
+
+function applyTheme() {
+  document.body.dataset.theme = currentTheme;
+
+  document.querySelectorAll('input[name="theme"]').forEach((input) => {
+    input.checked = input.value === currentTheme;
+  });
+}
+
+function setTheme(theme) {
+  if (!["dark", "light"].includes(theme)) return;
+
+  currentTheme = theme;
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  applyTheme();
 }
 
 function t(key) {
@@ -1440,6 +1472,9 @@ $("#creatorContact").addEventListener("click", openContactDialog);
 document.querySelectorAll("input[name='language']").forEach((input) => {
   input.addEventListener("change", () => setLanguage(input.value));
 });
+document.querySelectorAll('input[name="theme"]').forEach((input) => {
+  input.addEventListener("change", () => setTheme(input.value));
+});
 $("#importFile").addEventListener("change", (event) => {
   importRoutineFile(event.target.files?.[0]);
   event.target.value = "";
@@ -1528,5 +1563,6 @@ registerServiceWorker();
 installPressFeedback();
 render();
 applyLanguage();
+applyTheme();
 checkDueAlarms();
 setScreen("menu");
