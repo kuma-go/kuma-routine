@@ -11,6 +11,7 @@ const DAYS = [
 const STORAGE_KEY = "kuma-routine.v5";
 const LANGUAGE_STORAGE_KEY = "kuma-routine.language";
 const THEME_STORAGE_KEY = "kuma-routine.theme";
+const APP_URL = "https://kuma-go.github.io/kuma-routine/";
 const LOOP_WEEKS = 5;
 const CENTER_WEEK = Math.floor(LOOP_WEEKS / 2);
 const SLIDES = Array.from({ length: LOOP_WEEKS }, () => DAYS).flat();
@@ -400,7 +401,7 @@ function toTime(minutes) {
 }
 
 function defaultEndForStart(start) {
-  return toTime(toMinutes(start) + 30);
+  return toTime(toMinutes(start) + 60);
 }
 
 function randomRoutineColor() {
@@ -443,7 +444,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-24", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-25", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
@@ -731,7 +732,7 @@ function render() {
         if (pressWasSelected) {
           openEditor(day.key, null, {
             start: toTime(gap.start),
-            end: toTime(Math.min(gap.end, gap.start + 30)),
+            end: toTime(Math.min(gap.end, gap.start + 60)),
           });
         }
       });
@@ -744,7 +745,7 @@ function render() {
           suppressNextClick = true;
           openEditor(day.key, null, {
             start: toTime(gap.start),
-            end: toTime(Math.min(gap.end, gap.start + 30)),
+            end: toTime(Math.min(gap.end, gap.start + 60)),
           });
         }, 520);
       });
@@ -1429,9 +1430,9 @@ async function importRoutineFile(file) {
 }
 
 async function shareAll(trigger = $("#menuShare")) {
-  const text = `KUMA routine\n\n${shareText()}`;
+  const text = `KUMA routine\n${APP_URL}\n\n${shareText()}`;
   if (navigator.share) {
-    await navigator.share({ title: "KUMA routine", text });
+    await navigator.share({ title: "KUMA routine", text: shareText(), url: APP_URL });
     return;
   }
   await navigator.clipboard.writeText(text);
@@ -1441,6 +1442,36 @@ async function shareAll(trigger = $("#menuShare")) {
   window.setTimeout(() => {
     label.textContent = original;
   }, 1400);
+}
+
+function initAdSense() {
+  const adSlot = document.querySelector(".ad-slot");
+  const client = adSlot?.dataset.adClient?.trim();
+  const slot = adSlot?.dataset.adSlot?.trim();
+  if (!adSlot || !client || !slot) return;
+
+  adSlot.classList.add("is-adsense-ready");
+  const ad = document.createElement("ins");
+  ad.className = "adsbygoogle";
+  ad.style.display = "block";
+  ad.dataset.adClient = client;
+  ad.dataset.adSlot = slot;
+  ad.dataset.adFormat = "auto";
+  ad.dataset.fullWidthResponsive = "true";
+  adSlot.append(ad);
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.crossOrigin = "anonymous";
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+  script.onload = () => {
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch {
+      adSlot.classList.remove("is-adsense-ready");
+    }
+  };
+  document.head.append(script);
 }
 
 async function installApp() {
@@ -1600,6 +1631,7 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 registerServiceWorker();
+initAdSense();
 installPressFeedback();
 render();
 applyLanguage();

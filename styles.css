@@ -126,6 +126,16 @@ button:active,
   color: #898989;
   font-size: clamp(2rem, 7vw, 3.4rem);
   font-weight: 800;
+  overflow: hidden;
+}
+
+.ad-slot .adsbygoogle {
+  width: 100%;
+  min-height: inherit;
+}
+
+.ad-slot.is-adsense-ready .ad-placeholder {
+  display: none;
 }
 
 .menu-screen {
