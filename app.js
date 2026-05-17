@@ -55,6 +55,7 @@ let mouseDrag = null;
 let lastViewportWidth = window.innerWidth;
 let renderedTodayIndex = todayIndex();
 let warnedNotificationFallback = false;
+let serviceWorkerRegistration = null;
 const firedAlarmKeys = loadFiredAlarmKeys();
 
 const menuScreen = $("#menuScreen");
@@ -168,6 +169,18 @@ function notificationPermission() {
   return Notification.permission;
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("./sw.js?v=20260517-16", { scope: "./" })
+    .then((registration) => {
+      serviceWorkerRegistration = registration;
+      registration.update?.();
+    })
+    .catch(() => {
+      serviceWorkerRegistration = null;
+    });
+}
+
 function requestNotificationPermission() {
   if (!("Notification" in window)) return Promise.resolve("unsupported");
   try {
@@ -214,24 +227,39 @@ function showAlarmToast(title, body) {
   }, 5200);
 }
 
+function showSystemNotification(title, options) {
+  if (notificationPermission() !== "granted") return false;
+
+  if (serviceWorkerRegistration?.showNotification) {
+    serviceWorkerRegistration.showNotification(title, options).catch(() => {
+      showAlarmToast(title, options.body ?? "");
+    });
+    return true;
+  }
+
+  try {
+    new Notification(title, options);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function notifyRoutine(dayKey, routine) {
   const day = DAYS.find((item) => item.key === dayKey);
   const title = "KUMA routine";
   const body = `${day?.ko ?? ""} ${day?.en ?? ""} ${displayStart(routine.start)} ${routine.title}`;
+  const options = {
+    body,
+    tag: `kuma-routine-${localDateKey()}-${dayKey}-${routine.id}`,
+    renotify: true,
+    silent: false,
+    icon: "./icon-192.png",
+    badge: "./icon-192.png",
+    data: { dayKey, routineId: routine.id },
+  };
 
-  if (notificationPermission() === "granted") {
-    try {
-      new Notification(title, {
-        body,
-        tag: `kuma-routine-${localDateKey()}-${dayKey}-${routine.id}`,
-        renotify: true,
-        silent: false,
-      });
-      return;
-    } catch {
-      // Fall through to the in-app toast when the browser blocks construction.
-    }
-  }
+  if (showSystemNotification(title, options)) return;
   showAlarmToast(title, body);
 }
 
@@ -1068,6 +1096,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) checkDueAlarms();
 });
 
+registerServiceWorker();
 installPressFeedback();
 render();
 checkDueAlarms();
