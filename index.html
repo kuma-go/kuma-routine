@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#131319">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="KUMA">
+    <meta name="apple-mobile-web-app-title" content="KUMA routine">
     <title>KUMA routine</title>
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./pwa-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./apple-touch-icon.png">
-    <link rel="stylesheet" href="./styles.css?v=20260517-19">
+    <link rel="stylesheet" href="./styles.css?v=20260517-20">
   </head>
   <body>
     <main class="app-shell">
@@ -42,13 +42,13 @@
           <div class="menu-actions">
             <button id="menuShare" type="button"><img src="./Icon_Share.svg" alt="" aria-hidden="true"><span data-i18n="share">공유하기</span></button>
             <button id="exportRoutines" type="button"><img src="./Icon_Download.svg" alt="" aria-hidden="true"><span data-i18n="saveFile">저장하기</span></button>
-            <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span data-i18n="loadFile">불러오기</span></button>
-            <button id="installApp" type="button"><img src="./pwa-icon.svg" alt="" aria-hidden="true"><span data-i18n="installApp">앱아이콘 추가</span></button>
             <button id="openSettings" type="button"><img src="./Icon_Settings.svg" alt="" aria-hidden="true"><span data-i18n="settings">설정</span></button>
+            <button id="importRoutines" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span data-i18n="loadFile">불러오기</span></button>
           </div>
+          <button class="install-button" id="installApp" type="button"><img src="./pwa-icon.svg" alt="" aria-hidden="true"><span data-i18n="installApp">앱아이콘 추가</span></button>
           <button class="start-button" id="openDay" type="button" data-i18n="start">시작하기</button>
         </div>
-        <input id="importFile" type="file" accept="application/json,.json" hidden>
+        <input id="importFile" type="file" accept="application/json,.json,text/calendar,.ics" hidden>
       </section>
 
       <section class="day-screen" id="dayScreen" aria-label="요일별 루틴 화면" data-i18n-attr="aria-label:dayScreenAria" hidden>
@@ -136,6 +136,7 @@
         </section>
 
         <div class="settings-actions">
+          <button id="exportCalendar" type="button"><img src="./Icon_Clock.svg" alt="" aria-hidden="true"><span data-i18n="exportCalendar">캘린더 내보내기</span></button>
           <button id="resetDemo" type="button"><img src="./Icon_Plus.svg" alt="" aria-hidden="true"><span data-i18n="makeSample">샘플 만들기</span></button>
           <button class="danger-menu-button" id="resetAll" type="button"><img src="./Icon_Trash.svg" alt="" aria-hidden="true"><span data-i18n="reset">초기화</span></button>
           <button id="creatorContact" type="button"><img src="./Icon_Smile.svg" alt="" aria-hidden="true"><span data-i18n="creatorContact">제작자/문의</span></button>
@@ -170,6 +171,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=20260517-19"></script>
+    <script src="./app.js?v=20260517-20"></script>
   </body>
 </html>

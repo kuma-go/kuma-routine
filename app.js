@@ -69,6 +69,8 @@ const I18N = {
     today: "오늘",
     tutorialAria: "사용 안내를 보고 시작하기",
     empty: "비어있음",
+    exportCalendar: "캘린더 내보내기",
+    noAlarmCalendar: "알람이 켜진 루틴이 없어요.",
   },
   en: {
     addRoutine: "Add routine",
@@ -119,6 +121,8 @@ const I18N = {
     today: "Today",
     tutorialAria: "Open the app after reading the guide",
     empty: "Empty",
+    exportCalendar: "Export calendar",
+    noAlarmCalendar: "There are no routines with alarms enabled.",
   },
   ja: {
     addRoutine: "ルーティン追加",
@@ -169,6 +173,8 @@ const I18N = {
     today: "今日",
     tutorialAria: "ガイドを見て開始",
     empty: "空き",
+    exportCalendar: "カレンダー出力",
+    noAlarmCalendar: "アラームがオンのルーティンがありません。",
   },
 };
 
@@ -377,7 +383,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-19", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-20", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
@@ -1142,15 +1148,95 @@ function exportRoutineFile() {
     exportedAt: new Date().toISOString(),
     routines,
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  downloadBlob(
+    new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+    `kuma-routine-${new Date().toISOString().slice(0, 10)}.json`
+  );
+}
+
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `kuma-routine-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function calendarDateForRoutine(dayIndex, start) {
+  const date = new Date();
+  let offset = (dayIndex - todayIndex() + 7) % 7;
+  if (offset === 0 && toMinutes(start) < currentMinutes()) offset = 7;
+  date.setDate(date.getDate() + offset);
+  return date;
+}
+
+function formatCalendarDate(date, time) {
+  const [hour, minute] = time.split(":").map(Number);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+    "T",
+    String(hour).padStart(2, "0"),
+    String(minute).padStart(2, "0"),
+    "00",
+  ].join("");
+}
+
+function escapeCalendarText(value) {
+  return String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function exportCalendarFile() {
+  const events = [];
+  DAYS.forEach((day, dayIndex) => {
+    sorted(day.key).filter((routine) => routine.alarm).forEach((routine) => {
+      const startDate = calendarDateForRoutine(dayIndex, routine.start);
+      events.push([
+        "BEGIN:VEVENT",
+        `UID:${routine.id}@kuma-routine`,
+        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")}`,
+        `DTSTART:${formatCalendarDate(startDate, routine.start)}`,
+        `DTEND:${formatCalendarDate(startDate, routine.end)}`,
+        `RRULE:FREQ=WEEKLY;BYDAY=${["MO", "TU", "WE", "TH", "FR", "SA", "SU"][dayIndex]}`,
+        `SUMMARY:${escapeCalendarText(routine.title)}`,
+        `DESCRIPTION:${escapeCalendarText(`KUMA routine ${dayLabel(day)} ${routine.start}~${routine.end}`)}`,
+        "BEGIN:VALARM",
+        "TRIGGER:-PT0M",
+        "ACTION:DISPLAY",
+        `DESCRIPTION:${escapeCalendarText(routine.title)}`,
+        "END:VALARM",
+        "END:VEVENT",
+      ].join("\r\n"));
+    });
+  });
+
+  if (!events.length) {
+    alert(t("noAlarmCalendar"));
+    return;
+  }
+
+  const calendar = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//KUMA routine//Routine Calendar//KO",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n");
+
+  downloadBlob(
+    new Blob([calendar], { type: "text/calendar;charset=utf-8" }),
+    `kuma-routine-calendar-${new Date().toISOString().slice(0, 10)}.ics`
+  );
 }
 
 function normalizeImportedRoutines(payload) {
@@ -1169,11 +1255,101 @@ function normalizeImportedRoutines(payload) {
   }, {});
 }
 
+function unfoldCalendarLines(text) {
+  return text.split(/\r?\n/).reduce((lines, line) => {
+    if (/^[ \t]/.test(line) && lines.length) {
+      lines[lines.length - 1] += line.slice(1);
+    } else {
+      lines.push(line.trimEnd());
+    }
+    return lines;
+  }, []);
+}
+
+function calendarValue(line) {
+  return line.slice(line.indexOf(":") + 1);
+}
+
+function calendarProp(lines, name) {
+  return lines.find((line) => line.toUpperCase().startsWith(`${name}:`) || line.toUpperCase().startsWith(`${name};`));
+}
+
+function unescapeCalendarText(value) {
+  return String(value)
+    .replace(/\\n/g, "\n")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\\\/g, "\\");
+}
+
+function parseCalendarDateTime(line) {
+  if (!line) return null;
+  const value = calendarValue(line);
+  const match = value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?)?(Z)?$/);
+  if (!match) return null;
+
+  const [, year, month, day, hour = "00", minute = "00", second = "00", utc] = match;
+  const date = utc
+    ? new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)))
+    : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  const jsDay = date.getDay();
+  return {
+    dayIndex: jsDay === 0 ? 6 : jsDay - 1,
+    time: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
+function calendarDayIndex(eventLines, fallbackDayIndex) {
+  const rrule = calendarProp(eventLines, "RRULE");
+  const byday = rrule?.match(/BYDAY=([^;]+)/i)?.[1]?.split(",")?.[0];
+  const map = { MO: 0, TU: 1, WE: 2, TH: 3, FR: 4, SA: 5, SU: 6 };
+  return byday && map[byday] !== undefined ? map[byday] : fallbackDayIndex;
+}
+
+function parseCalendarRoutines(text) {
+  const next = emptyRoutines();
+  const lines = unfoldCalendarLines(text);
+  let eventLines = null;
+
+  for (const line of lines) {
+    if (line === "BEGIN:VEVENT") {
+      eventLines = [];
+      continue;
+    }
+    if (line === "END:VEVENT" && eventLines) {
+      const start = parseCalendarDateTime(calendarProp(eventLines, "DTSTART"));
+      const end = parseCalendarDateTime(calendarProp(eventLines, "DTEND"));
+      const summary = calendarProp(eventLines, "SUMMARY");
+      if (start) {
+        const dayIndex = calendarDayIndex(eventLines, start.dayIndex);
+        const day = DAYS[dayIndex];
+        const startMinutes = toMinutes(start.time);
+        const endTime = end?.time ?? toTime(Math.min(startMinutes + 60, 1439));
+        const safeEnd = toMinutes(endTime) > startMinutes ? endTime : toTime(Math.min(startMinutes + 60, 1439));
+        next[day.key].push({
+          id: crypto.randomUUID(),
+          start: start.time,
+          end: safeEnd,
+          title: unescapeCalendarText(summary ? calendarValue(summary) : "Routine"),
+          color: "#4f8da3",
+          alarm: eventLines.some((item) => item === "BEGIN:VALARM"),
+        });
+      }
+      eventLines = null;
+      continue;
+    }
+    if (eventLines) eventLines.push(line);
+  }
+
+  return next;
+}
+
 async function importRoutineFile(file) {
   if (!file) return;
   try {
     const text = await file.text();
-    routines = normalizeImportedRoutines(JSON.parse(text));
+    const isCalendar = file.name.toLowerCase().endsWith(".ics") || text.trim().startsWith("BEGIN:VCALENDAR");
+    routines = isCalendar ? parseCalendarRoutines(text) : normalizeImportedRoutines(JSON.parse(text));
     saveRoutines();
     selectedGapId = null;
     selectedRoutineId = null;
@@ -1256,6 +1432,7 @@ $("#addRoutine").addEventListener("click", () => openEditor());
 $("#goToday").addEventListener("click", showToday);
 $("#menuShare").addEventListener("click", (event) => shareAll(event.currentTarget).catch(() => alert(t("shareFail"))));
 $("#exportRoutines").addEventListener("click", exportRoutineFile);
+$("#exportCalendar").addEventListener("click", exportCalendarFile);
 $("#importRoutines").addEventListener("click", () => $("#importFile").click());
 $("#installApp").addEventListener("click", () => installApp().catch(() => alert(t("installHelp"))));
 $("#openSettings").addEventListener("click", openSettingsDialog);
