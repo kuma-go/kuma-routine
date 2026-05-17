@@ -383,7 +383,7 @@ function notificationPermission() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./sw.js?v=20260517-20", { scope: "./" })
+  navigator.serviceWorker.register("./sw.js?v=20260517-21", { scope: "./" })
     .then((registration) => {
       serviceWorkerRegistration = registration;
       registration.update?.();
