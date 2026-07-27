@@ -66,7 +66,7 @@ window.ModTheme = (function(){
   }
 
   function resolvedMode(){
-    const t = App.state.theme || 'system';
+    const t = App.state.theme || 'light';
     if(t === 'system') return systemPrefersDark() ? 'dark' : 'light';
     return t;
   }
@@ -87,7 +87,7 @@ window.ModTheme = (function(){
     if(mqList || !window.matchMedia) return;
     mqList = window.matchMedia('(prefers-color-scheme: dark)');
     mqHandler = ()=>{
-      if((App.state.theme || 'system') === 'system'){ applyTransitionGuard(); paint(); }
+      if((App.state.theme || 'light') === 'system'){ applyTransitionGuard(); paint(); }
     };
     if(mqList.addEventListener) mqList.addEventListener('change', mqHandler);
     else if(mqList.addListener) mqList.addListener(mqHandler); // old Safari
@@ -205,7 +205,7 @@ window.ModTheme = (function(){
   }
 
   function openPicker(){
-    const cur = App.state.theme || 'system';
+    const cur = App.state.theme || 'light';
     const body = `<div class="th-opt-list">
       ${optHTML('light', cur, '☀️', '라이트', '밝고 또렷하게', thumbHTML('th-thumb-light', ['#B6DD6E','#7B96EF','#FFD166']))}
       ${optHTML('dark', cur, '🌙', '다크', '눈이 편안하게', thumbHTML('th-thumb-dark', ['#6E8A4E','#4E63A0','#B08C46']))}
@@ -435,7 +435,7 @@ window.ModTheme = (function(){
     `,
 
     init(){
-      if(typeof App.state.theme !== 'string') App.state.theme = 'system';
+      if(typeof App.state.theme !== 'string') App.state.theme = 'light';  // 기본은 라이트
       if(typeof App.state.adFree !== 'boolean') App.state.adFree = false;
       ensureMQ();
       paint();          // instant on boot, no transition flash

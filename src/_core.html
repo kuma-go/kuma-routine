@@ -627,6 +627,7 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 const SEED={
   role:'child',
   onboarded:false,
+  theme:'light',
   me:{name:'',emoji:'',role:'child'},
   members:[
     {id:'m1',name:'아이',emoji:'🐣',role:'child',color:'#7B96EF'},
@@ -769,6 +770,52 @@ const App={
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
   todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||'m1')===k&&t.day===day); },
   canSetCoin(){ return this.isMaster()&&this.vm()==='m1'; },
+
+  /* 배포된 앱 주소 (file:// 로 열면 GitHub Pages 주소로 폴백) */
+  appUrl(){
+    try{
+      if(location.protocol.startsWith('http')){
+        let u=location.origin+location.pathname;
+        return u.replace(/index\.html$/,'');
+      }
+    }catch(e){}
+    return 'https://kuma-go.github.io/kuma-routine/';
+  },
+
+  /* ---------- 가족끼리 데이터 주고받기 ----------
+     서버가 없으므로 상태를 문자열로 만들어 카톡 등으로 전달한다. */
+  exportCode(){
+    const d={v:1,at:new Date().toISOString(),
+      members:this.state.members, schedules:this.state.schedules,
+      todos:this.state.todos, reward:this.state.reward, coins:this.state.coins,
+      inviteCode:this.state.inviteCode};
+    const json=JSON.stringify(d);
+    const b64=btoa(unescape(encodeURIComponent(json)));
+    return 'KUMA1:'+b64;
+  },
+  importCode(str){
+    const t=String(str||'').trim().replace(/\s+/g,'');
+    if(!t.startsWith('KUMA1:')) return {ok:false,msg:'KUMA 코드가 아니에요'};
+    try{
+      const json=decodeURIComponent(escape(atob(t.slice(6))));
+      const d=JSON.parse(json);
+      if(!d||!d.schedules) return {ok:false,msg:'코드가 손상됐어요'};
+      const n=(d.members||[]).length;
+      const sc=Object.keys(d.schedules||{}).reduce((a,k)=>a+Object.keys(d.schedules[k]||{}).reduce((b,x)=>b+(d.schedules[k][x]||[]).length,0),0);
+      return {ok:true,data:d,members:n,schedules:sc,todos:(d.todos||[]).length,at:d.at};
+    }catch(e){ return {ok:false,msg:'코드를 읽지 못했어요'}; }
+  },
+  applyImported(d){
+    if(d.members&&d.members.length) this.state.members=d.members;
+    if(d.schedules) this.state.schedules=d.schedules;
+    if(d.todos) this.state.todos=d.todos;
+    if(d.reward) this.state.reward=d.reward;
+    if(typeof d.coins==='number') this.state.coins=d.coins;
+    if(d.inviteCode) this.state.inviteCode=d.inviteCode;
+    this.state.onboarded=true;
+    this.viewMember='m1'; this.openCard=null;
+    this.save(); this.render();
+  },
 
   /* 둘러보기용 예시 데이터 주입 (온보딩에서 선택했을 때만) */
   applyDemo(){

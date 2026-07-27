@@ -318,7 +318,7 @@ window.ModFamily = {
         App.toast('이미지로 저장했어요');
       });
       footEl.querySelector('#fm-share-link').addEventListener('click', () => {
-        this._copyText('https://kumaroutine.app/share/' + App.state.inviteCode, '공유 링크를 복사했어요');
+        this._copyText((App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(App.state.inviteCode), '공유 링크를 복사했어요');
       });
     });
   },
@@ -560,7 +560,7 @@ window.ModFamily = {
   },
 
   _inviteUrl(code){
-    return 'https://kuma.routine/invite/' + String(code || App.state.inviteCode || 'HRK-0000');
+    return (App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(String(code || App.state.inviteCode || 'HRK-0000'));
   },
 
   _qrHtml(code){

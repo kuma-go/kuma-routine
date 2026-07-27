@@ -627,6 +627,7 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 const SEED={
   role:'child',
   onboarded:false,
+  theme:'light',
   me:{name:'',emoji:'',role:'child'},
   members:[
     {id:'m1',name:'아이',emoji:'🐣',role:'child',color:'#7B96EF'},
@@ -769,6 +770,52 @@ const App={
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
   todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||'m1')===k&&t.day===day); },
   canSetCoin(){ return this.isMaster()&&this.vm()==='m1'; },
+
+  /* 배포된 앱 주소 (file:// 로 열면 GitHub Pages 주소로 폴백) */
+  appUrl(){
+    try{
+      if(location.protocol.startsWith('http')){
+        let u=location.origin+location.pathname;
+        return u.replace(/index\.html$/,'');
+      }
+    }catch(e){}
+    return 'https://kuma-go.github.io/kuma-routine/';
+  },
+
+  /* ---------- 가족끼리 데이터 주고받기 ----------
+     서버가 없으므로 상태를 문자열로 만들어 카톡 등으로 전달한다. */
+  exportCode(){
+    const d={v:1,at:new Date().toISOString(),
+      members:this.state.members, schedules:this.state.schedules,
+      todos:this.state.todos, reward:this.state.reward, coins:this.state.coins,
+      inviteCode:this.state.inviteCode};
+    const json=JSON.stringify(d);
+    const b64=btoa(unescape(encodeURIComponent(json)));
+    return 'KUMA1:'+b64;
+  },
+  importCode(str){
+    const t=String(str||'').trim().replace(/\s+/g,'');
+    if(!t.startsWith('KUMA1:')) return {ok:false,msg:'KUMA 코드가 아니에요'};
+    try{
+      const json=decodeURIComponent(escape(atob(t.slice(6))));
+      const d=JSON.parse(json);
+      if(!d||!d.schedules) return {ok:false,msg:'코드가 손상됐어요'};
+      const n=(d.members||[]).length;
+      const sc=Object.keys(d.schedules||{}).reduce((a,k)=>a+Object.keys(d.schedules[k]||{}).reduce((b,x)=>b+(d.schedules[k][x]||[]).length,0),0);
+      return {ok:true,data:d,members:n,schedules:sc,todos:(d.todos||[]).length,at:d.at};
+    }catch(e){ return {ok:false,msg:'코드를 읽지 못했어요'}; }
+  },
+  applyImported(d){
+    if(d.members&&d.members.length) this.state.members=d.members;
+    if(d.schedules) this.state.schedules=d.schedules;
+    if(d.todos) this.state.todos=d.todos;
+    if(d.reward) this.state.reward=d.reward;
+    if(typeof d.coins==='number') this.state.coins=d.coins;
+    if(d.inviteCode) this.state.inviteCode=d.inviteCode;
+    this.state.onboarded=true;
+    this.viewMember='m1'; this.openCard=null;
+    this.save(); this.render();
+  },
 
   /* 둘러보기용 예시 데이터 주입 (온보딩에서 선택했을 때만) */
   applyDemo(){
@@ -4317,7 +4364,7 @@ window.ModFamily = {
         App.toast('이미지로 저장했어요');
       });
       footEl.querySelector('#fm-share-link').addEventListener('click', () => {
-        this._copyText('https://kumaroutine.app/share/' + App.state.inviteCode, '공유 링크를 복사했어요');
+        this._copyText((App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(App.state.inviteCode), '공유 링크를 복사했어요');
       });
     });
   },
@@ -4559,7 +4606,7 @@ window.ModFamily = {
   },
 
   _inviteUrl(code){
-    return 'https://kuma.routine/invite/' + String(code || App.state.inviteCode || 'HRK-0000');
+    return (App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(String(code || App.state.inviteCode || 'HRK-0000'));
   },
 
   _qrHtml(code){
@@ -6038,7 +6085,7 @@ window.ModTheme = (function(){
   }
 
   function resolvedMode(){
-    const t = App.state.theme || 'system';
+    const t = App.state.theme || 'light';
     if(t === 'system') return systemPrefersDark() ? 'dark' : 'light';
     return t;
   }
@@ -6059,7 +6106,7 @@ window.ModTheme = (function(){
     if(mqList || !window.matchMedia) return;
     mqList = window.matchMedia('(prefers-color-scheme: dark)');
     mqHandler = ()=>{
-      if((App.state.theme || 'system') === 'system'){ applyTransitionGuard(); paint(); }
+      if((App.state.theme || 'light') === 'system'){ applyTransitionGuard(); paint(); }
     };
     if(mqList.addEventListener) mqList.addEventListener('change', mqHandler);
     else if(mqList.addListener) mqList.addListener(mqHandler); // old Safari
@@ -6177,7 +6224,7 @@ window.ModTheme = (function(){
   }
 
   function openPicker(){
-    const cur = App.state.theme || 'system';
+    const cur = App.state.theme || 'light';
     const body = `<div class="th-opt-list">
       ${optHTML('light', cur, '☀️', '라이트', '밝고 또렷하게', thumbHTML('th-thumb-light', ['#B6DD6E','#7B96EF','#FFD166']))}
       ${optHTML('dark', cur, '🌙', '다크', '눈이 편안하게', thumbHTML('th-thumb-dark', ['#6E8A4E','#4E63A0','#B08C46']))}
@@ -6407,7 +6454,7 @@ window.ModTheme = (function(){
     `,
 
     init(){
-      if(typeof App.state.theme !== 'string') App.state.theme = 'system';
+      if(typeof App.state.theme !== 'string') App.state.theme = 'light';  // 기본은 라이트
       if(typeof App.state.adFree !== 'boolean') App.state.adFree = false;
       ensureMQ();
       paint();          // instant on boot, no transition flash
@@ -7961,8 +8008,9 @@ App.editSchedule=function(id,presetStart){
       <div><label>끝</label><select class="inp" id="fE">${opt(d.e)}</select></div>
     </div>
     ${id?'':`<div class="field">
-      <label>요일 <span style="color:var(--muted);font-weight:700">· 여러 날 한 번에 추가돼요</span></label>
-      <div class="swatches" id="fDays">${DAYS.map((x,i)=>`<button class="daychip ${i===this.day?'on':''}" data-d="${i}">${x[0]}</button>`).join('')}</div>
+      <label>반복할 요일 <span id="fDaysCnt" style="color:var(--indigo);font-weight:800">· 1일 선택됨</span></label>
+      <div class="swatches" id="fDays">${DAYS.map((x,i)=>`<button class="daychip ${i===this.day?'on':''}" data-d="${i}" aria-pressed="${i===this.day}">${x[0]}</button>`).join('')}</div>
+      <p style="margin:8px 2px 0;font-size:11.5px;font-weight:700;color:var(--muted)">여러 요일을 골라 한 번에 만들 수 있어요</p>
     </div>`}
     <div class="field">
       <label>색상</label>
@@ -7997,10 +8045,19 @@ App.editSchedule=function(id,presetStart){
   `,(b,f)=>{
     let pick=d.c, days=[this.day];
     b.querySelectorAll('#fC .sw').forEach(s=>s.onclick=()=>{pick=s.dataset.c;b.querySelectorAll('#fC .sw').forEach(x=>x.classList.remove('on'));s.classList.add('on')});
-    b.querySelectorAll('#fDays .daychip').forEach(s=>s.onclick=()=>{
-      const i=+s.dataset.d; s.classList.toggle('on');
+    const cntEl=b.querySelector('#fDaysCnt');
+    const syncDays=()=>{
       days=[...b.querySelectorAll('#fDays .daychip.on')].map(x=>+x.dataset.d);
+      if(cntEl)cntEl.textContent=days.length?`· ${days.length}일 선택됨`:'· 선택된 요일 없음';
+      if(cntEl)cntEl.style.color=days.length?'var(--indigo)':'var(--muted)';
+    };
+    b.querySelectorAll('#fDays .daychip').forEach(s=>s.onclick=()=>{
+      s.classList.toggle('on');
+      s.setAttribute('aria-pressed',s.classList.contains('on'));
+      if(window.ModSound)ModSound.play('tap');
+      syncDays();
     });
+    syncDays();
     b.querySelectorAll('#fA,#fRep,#fSec').forEach(t=>t.onclick=e=>e.currentTarget.classList.toggle('on'));
     const del=b.querySelector('#fDel');
     if(del)del.onclick=()=>{
@@ -8030,6 +8087,98 @@ App.editSchedule=function(id,presetStart){
       this.toast(id?'일정을 수정했어요':`일정을 ${days.length>1?days.length+'일에 ':''}추가했어요 ✨`);
     };
   });
+};
+
+/* ---------- 가족끼리 함께 쓰기 (내보내기 / 가져오기) ---------- */
+App.shareSheet=function(){
+  const code=this.exportCode();
+  const size=Math.round(code.length/1024*10)/10;
+  this.sheet('가족과 함께 쓰기',`
+    <p style="margin:0 0 16px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
+      아직 계정 서버가 없어서 <b>자동 동기화는 되지 않아요.</b><br>
+      대신 아래 <b>가족 코드</b>를 복사해 카톡 등으로 보내면,<br>
+      받은 사람이 붙여넣어 우리 가족 일정을 그대로 가져갈 수 있어요.
+    </p>
+    <div class="field">
+      <label>가족 코드 <span style="color:var(--muted);font-weight:700">· ${size}KB</span></label>
+      <textarea class="inp" id="shCode" readonly style="height:96px;font-family:'SFMono-Regular',Menlo,monospace;font-size:10.5px;line-height:1.5;word-break:break-all">${esc(code)}</textarea>
+    </div>
+    <button class="btn full" id="shCopy" style="margin-bottom:18px">가족 코드 복사하기</button>
+
+    <div class="field">
+      <label>받은 코드 붙여넣기</label>
+      <textarea class="inp" id="shIn" placeholder="KUMA1: 로 시작하는 코드를 붙여넣어 주세요" style="height:76px;font-size:12px"></textarea>
+    </div>
+    <div id="shInfo" style="font-size:12.5px;font-weight:700;color:var(--muted);margin:-6px 2px 14px;min-height:18px"></div>
+    <button class="btn full line" id="shApply">코드로 가져오기</button>
+
+    <p style="margin:18px 2px 0;font-size:11.5px;font-weight:700;color:var(--muted);line-height:1.6">
+      가져오면 이 기기의 일정과 할 일이 <b>받은 내용으로 바뀝니다.</b><br>
+      한쪽에서 수정한 내용은 다시 코드를 보내야 반영돼요.
+    </p>`,
+    `<button class="btn line full" id="shClose">닫기</button>`,
+    (b,f)=>{
+      b.querySelector('#shCopy').onclick=()=>{
+        const ta=b.querySelector('#shCode'); ta.select();
+        const done=()=>this.toast('가족 코드를 복사했어요 · 카톡으로 보내보세요');
+        if(navigator.clipboard&&navigator.clipboard.writeText)
+          navigator.clipboard.writeText(code).then(done).catch(()=>{try{document.execCommand('copy');done()}catch(e){this.toast('복사에 실패했어요')}});
+        else {try{document.execCommand('copy');done()}catch(e){this.toast('복사에 실패했어요')}}
+      };
+      const info=b.querySelector('#shInfo'), inp=b.querySelector('#shIn');
+      let parsed=null;
+      inp.oninput=()=>{
+        const v=inp.value.trim();
+        if(!v){info.textContent='';info.style.color='var(--muted)';parsed=null;return;}
+        const r=this.importCode(v);
+        parsed=r.ok?r:null;
+        info.textContent=r.ok
+          ? `가족 ${r.members}명 · 일정 ${r.schedules}개 · 할 일 ${r.todos}개`
+          : r.msg;
+        info.style.color=r.ok?'#1E7A50':'#D8453A';
+      };
+      b.querySelector('#shApply').onclick=()=>{
+        if(!parsed){this.toast('먼저 올바른 코드를 붙여넣어 주세요');inp.focus();return;}
+        this.applyImported(parsed.data);
+        this.closeSheet();
+        this.toast(`가족 일정을 가져왔어요 · 일정 ${parsed.schedules}개`);
+        if(window.ModSound)ModSound.play('complete');
+      };
+      f.querySelector('#shClose').onclick=()=>this.closeSheet();
+    });
+};
+
+/* 초대 링크(?invite=)로 들어온 경우 안내 */
+App.checkInvite=function(){
+  let code=null;
+  try{ code=new URLSearchParams(location.search).get('invite'); }catch(e){}
+  if(!code)return;
+  try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  setTimeout(()=>{
+    this.sheet('가족 초대를 받았어요',`
+      <div style="text-align:center;padding:6px 0 18px">
+        <div style="font-size:44px">👨‍👩‍👧</div>
+        <div style="font-size:19px;font-weight:800;margin-top:10px">초대 코드 ${esc(code)}</div>
+      </div>
+      <p style="margin:0 0 14px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
+        이 앱은 아직 <b>계정 서버 없이 기기 안에서만</b> 동작해요.
+        그래서 초대 링크만으로는 상대방 일정이 자동으로 넘어오지 않아요.
+      </p>
+      <div class="panel" style="padding:14px 16px">
+        <div style="font-size:13px;font-weight:800;margin-bottom:8px">함께 쓰는 방법</div>
+        <ol style="margin:0;padding-left:18px;font-size:12.5px;font-weight:600;color:var(--ink2);line-height:1.9">
+          <li>초대한 사람이 <b>메뉴 → 가족과 함께 쓰기</b> 에서 가족 코드를 복사</li>
+          <li>그 코드를 카톡 등으로 전달</li>
+          <li>받은 사람이 같은 화면에서 <b>붙여넣고 가져오기</b></li>
+        </ol>
+      </div>`,
+      `<button class="btn line" id="ivLater" style="flex:0 0 96px">나중에</button>
+       <button class="btn full" id="ivGo">가족 코드 화면 열기</button>`,
+      (b,f)=>{
+        f.querySelector('#ivLater').onclick=()=>this.closeSheet();
+        f.querySelector('#ivGo').onclick=()=>{this.closeSheet();setTimeout(()=>this.shareSheet(),260)};
+      });
+  },900);
 };
 
 /* ---------- PARENT MODE PIN GATE ---------- */
@@ -8086,6 +8235,7 @@ App.renderDrawer=function(){
       <button class="dr-item" data-go="todo"><span class="em">✅</span>할 일</button>
       <button class="dr-item" data-go="reward"><span class="em">🎁</span>보상 · 미니게임</button>
       <button class="dr-item" data-go="family"><span class="em">👥</span>가족 · 공유</button>
+      <button class="dr-item" data-act="share"><span class="em">🔗</span>가족과 함께 쓰기</button>
       <div class="hr"></div>
       ${window.ModSearch?`<button class="dr-item" data-act="search"><span class="em">🔍</span>일정 · 할 일 검색</button>`:''}
       ${window.ModSearch?`<button class="dr-item" data-act="tpl"><span class="em">⚡</span>템플릿으로 빠른 추가</button>`:''}
@@ -8111,6 +8261,7 @@ App.renderDrawer=function(){
     const a=b.dataset.act;
     if(a==='role'){this.closeSheet(); m?this.toChild():this.toMaster();}
     if(a==='sim'){this.closeSheet();this.openSim();}
+    if(a==='share'){this.closeSheet();this.shareSheet();}
     if(a==='search'){this.closeSheet();window.ModSearch?ModSearch.open():this.toast('검색을 불러올 수 없어요');}
     if(a==='tpl'){this.closeSheet();window.ModSearch?ModSearch.openTemplates():this.toast('템플릿을 불러올 수 없어요');}
     if(a==='badge'){this.closeSheet();window.ModBadge?ModBadge.open():this.toast('배지를 불러올 수 없어요');}
@@ -8260,9 +8411,22 @@ App.openSim=function(){
 
   const extra=document.createElement('style');
   extra.textContent=`
-    .daychip{width:42px;height:42px;border-radius:13px;border:1.6px solid var(--line);background:transparent;font-weight:800;font-size:14px;color:var(--muted);transition:.18s cubic-bezier(.22,1,.36,1)}
+    .daychip{position:relative;width:42px;height:42px;border-radius:13px;border:1.8px solid var(--line);
+      background:transparent;font-weight:800;font-size:14px;color:var(--muted);
+      transition:.18s cubic-bezier(.22,1,.36,1)}
     .daychip:active{transform:scale(.92)}
-    .daychip.on{background:var(--indigo-s);border-color:var(--indigo);color:var(--indigo)}
+    .daychip.on{background:var(--indigo-s);border-color:var(--indigo);color:var(--indigo);
+      box-shadow:inset 0 0 0 1px var(--indigo)}
+    /* 다중 선택임을 알리는 체크 */
+    .daychip.on::after{content:'';position:absolute;right:-4px;top:-4px;width:17px;height:17px;border-radius:50%;
+      background:var(--indigo);box-shadow:0 0 0 2px var(--paper);
+      -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12'/%3E%3C/svg%3E") center/contain no-repeat;
+      mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12'/%3E%3C/svg%3E") center/contain no-repeat}
+    .daychip.on::before{content:'';position:absolute;right:0.6px;top:1.4px;width:5px;height:9px;z-index:2;
+      border:solid #fff;border-width:0 2.2px 2.2px 0;transform:rotate(45deg)}
+    #phone.th-dark .daychip{border-color:#3A3A48}
+    #phone.th-dark .daychip.on{background:rgba(122,110,234,.16);border-color:#7A6EEA;color:#B7AEFF;box-shadow:inset 0 0 0 1px #7A6EEA}
+    #phone.th-dark .daychip.on::after{background:#7A6EEA;box-shadow:0 0 0 2px var(--paper)}
     select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23A3A3AF' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;padding-right:30px}
   `;
   document.head.appendChild(extra);
@@ -8319,6 +8483,7 @@ App.openSim=function(){
   }
 
   App.render();
+  if(App.checkInvite)App.checkInvite();
   /* 시작 시 이미 달성된 배지는 연출 없이 반영 */
   if(window.ModBadge&&ModBadge.check){try{ModBadge.check('silent')}catch(e){}}
   setInterval(()=>App.tick(),1000);
