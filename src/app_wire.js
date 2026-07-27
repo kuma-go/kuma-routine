@@ -311,7 +311,8 @@ App.renderDrawer=function(){
       <button class="dr-item" data-act="reset"><span class="em">↺</span>데이터 초기화</button>
     </div>
     <div style="padding:14px 20px calc(18px + env(safe-area-inset-bottom));font-size:11px;color:var(--muted);font-weight:600;line-height:1.5">
-      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
+      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서<br>
+      <a href="mailto:carksk@naver.com" style="color:var(--muted);text-decoration:none;border-bottom:1px solid var(--line)">개발/문의 carksk@naver.com</a>
     </div>`;
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}

@@ -8705,6 +8705,27 @@ window.ModSync = {
       transition:.18s cubic-bezier(.22,1,.36,1); }
     .iv-rb.on{ border-color:var(--indigo); background:var(--indigo-s); color:var(--indigo); }
 
+    /* 마스터 전용 토글 */
+    .sy-opt{ display:flex; align-items:center; gap:12px; margin-top:16px; padding:13px 15px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); cursor:pointer; }
+    .sy-opt-tx{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .sy-opt-tx b{ font-size:13.5px; font-weight:800; color:var(--ink); }
+    .sy-opt-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); line-height:1.5; }
+    .sy-sw{ margin-left:auto; flex:0 0 auto; width:46px; height:27px; border-radius:14px;
+      background:#DCDCE6; position:relative; transition:.2s cubic-bezier(.22,1,.36,1); }
+    .sy-sw i{ position:absolute; top:3px; left:3px; width:21px; height:21px; border-radius:50%;
+      background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:.2s cubic-bezier(.22,1,.36,1); }
+    .sy-sw.on{ background:var(--indigo); }
+    .sy-sw.on i{ transform:translateX(19px); }
+    .sy-reqbtns{ margin-left:auto; display:flex; gap:6px; flex:0 0 auto; }
+    .sy-reqbtns button{ padding:7px 12px; border-radius:14px; font-size:12px; font-weight:800; cursor:pointer; }
+    .sy-yes{ background:var(--indigo); color:#fff; border:0; }
+    .sy-no{ background:transparent; color:var(--muted); border:1.5px solid var(--line); }
+    #phone.th-dark .sy-opt{ border-color:#33333F; }
+    #phone.th-dark .sy-sw{ background:#3A3A48; }
+    #phone.th-dark .sy-sw.on{ background:#7A6EEA; }
+    #phone.th-dark .sy-no{ border-color:#3A3A48; }
+
     .iv-card{ text-align:center; padding:6px 0 16px; }
     .iv-card-av{ width:76px; height:76px; margin:0 auto 10px; border-radius:50%;
       background:var(--indigo-s); display:flex; align-items:center; justify-content:center; font-size:38px; }
@@ -8746,7 +8767,9 @@ window.ModSync = {
       const origSave = App.save.bind(App);
       App.save = (...a) => { const r = origSave(...a); try{ ModSync.onLocalChange(); }catch(e){} return r; };
     }
+    if(!s.groupOpts) s.groupOpts = {approval:false};
     if(this.enabled()) this.connect();
+    else if(this.pending()) this.watchPending();   // 승인을 기다리다 앱을 껐던 경우
   },
 
   /* 내장 설정이 있으면 그것을 쓰고, 없을 때만 사용자가 넣은 값을 쓴다 */
@@ -8914,6 +8937,20 @@ window.ModSync = {
     return Object.assign({token}, inv);
   },
 
+  /* ---------- 참여 승인 ----------
+     마스터가 켜 두면, 초대 코드를 넣어도 바로 연결되지 않고
+     마스터가 확인해 줄 때까지 기다린다. 기본은 꺼짐. */
+  needsApproval(){ return !!(App.state.groupOpts && App.state.groupOpts.approval); },
+  async setApproval(on){
+    if(!App.can('manageMembers')) throw new Error('마스터만 바꿀 수 있어요');
+    App.state.groupOpts = Object.assign({}, App.state.groupOpts, {approval: !!on});
+    App.save();
+    clearTimeout(this._pushTimer);
+    this._lastPushed = '';
+    if(this.enabled()) await this.push();
+    return !!on;
+  },
+
   /* 초대장대로 참여한다.
      bundle 을 넘기면 이 기기에 있던 일정을 내 프로필 밑으로 옮겨 붙인다. */
   async acceptInvite(inv, bundle){
@@ -8923,6 +8960,14 @@ window.ModSync = {
     if(!r.ok) throw new Error(await this._errText(r));
     const g = await r.json();
     if(!g) throw new Error('그룹을 찾지 못했어요');
+
+    /* 승인제가 켜져 있으면 자리를 먼저 차지하지 않고 요청만 남긴다.
+       단, 그 프로필이 이미 내 uid 로 묶여 있으면 같은 기기의 재연결이므로 그냥 통과시킨다. */
+    const opts = (g.state && g.state.groupOpts) || {};
+    const seat = ((g.state && g.state.members) || []).find(m => m.id === inv.member) || {};
+    if(opts.approval && seat.uid !== this._uid){
+      return this.requestJoin(inv, bundle, g);
+    }
 
     /* 그룹 상태를 받되, "내가 누구인지"는 초대장이 정한다 */
     if(g.state) this._applyRemote(g.state, {keepMe:false});
@@ -8976,6 +9021,123 @@ window.ModSync = {
     this.connect();
     await this.push();                       // 내 uid 바인딩과 합친 데이터를 곧바로 올린다
     return { code, member: App.member(mine.id), merged, moved };
+  },
+
+  /* ---------- 승인 대기 (참여하는 쪽) ---------- */
+  async requestJoin(inv, bundle, g){
+    const code = inv.group;
+    await fetch(this._url('/groups/' + code + '/requests/' + this._uid), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ member: inv.member, name: inv.name, emoji: inv.emoji,
+        role: inv.role, at: Date.now() })
+    });
+    App.state.sync.pending = {
+      group: code, member: inv.member, token: inv.token,
+      name: inv.name, emoji: inv.emoji, at: Date.now(),
+      bundle: (bundle && bundle.count) ? bundle : null      // 승인되면 그때 붙인다
+    };
+    App.save();
+    this._setStatus('busy','승인을 기다리는 중');
+    this.watchPending();
+    App.render();
+    return { pending:true, member:{ id:inv.member, name:inv.name, emoji:inv.emoji, role:inv.role } };
+  },
+
+  pending(){ return (App.state.sync || {}).pending || null; },
+
+  /* 마스터가 눌러줄 때까지 지켜본다. 앱을 껐다 켜도 다시 붙는다. */
+  watchPending(){
+    clearInterval(this._pendTimer);
+    if(!this.pending()) return;
+    const tick = () => this.checkPending().catch(() => {});
+    this._pendTimer = setInterval(tick, 5000);
+    tick();
+  },
+  stopPending(){ clearInterval(this._pendTimer); this._pendTimer = null; },
+
+  async checkPending(){
+    const p = this.pending();
+    if(!p) { this.stopPending(); return false; }
+    await this._auth();
+    const r = await fetch(this._url('/groups/' + p.group + '/state/members'));
+    if(!r.ok) return false;
+    const members = await r.json();
+    const seat = (members || []).find(m => m.id === p.member);
+    if(!seat) return false;
+    if(seat.uid !== this._uid) return false;          // 아직 안 눌러줬다
+    await this._finishPending(p);
+    return true;
+  },
+
+  async _finishPending(p){
+    this.stopPending();
+    const r = await fetch(this._url('/groups/' + p.group));
+    const g = r.ok ? await r.json() : null;
+    if(g && g.state) this._applyRemote(g.state, {keepMe:false});
+    App.state.meId = p.member;
+    App.state.sync.group = p.group;
+    App.state.sync.on = true;
+    App.state.sync.pending = null;
+    App.state.inviteCode = p.group;
+    App.viewMember = null;
+    App.migrate();
+    let merged = 0;
+    if(p.bundle && p.bundle.count) merged = App.mergeBundleInto(p.bundle, p.member);
+    try{
+      await fetch(this._url('/groups/' + p.group + '/requests/' + this._uid), {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:'null' });
+    }catch(e){}
+    App.save();
+    this.connect();
+    await this.push();
+    const me = App.member(p.member);
+    App.toast(`${me.emoji} ${me.name}(으)로 승인됐어요` + (merged ? ` · ${merged}개 가져옴` : ''));
+    if(window.ModSound) ModSound.play('complete');
+    App.render();
+  },
+
+  cancelPending(){
+    const p = this.pending();
+    this.stopPending();
+    if(p){
+      try{ fetch(this._url('/groups/' + p.group + '/requests/' + this._uid), {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:'null' }); }catch(e){}
+    }
+    App.state.sync.pending = null;
+    App.save();
+    this._setStatus('off','');
+    App.render();
+  },
+
+  /* ---------- 승인 처리 (마스터 쪽) ---------- */
+  async listRequests(){
+    if(!this.enabled() || !App.can('manageMembers')) return [];
+    await this._auth();
+    const r = await fetch(this._url('/groups/' + App.state.sync.group + '/requests'));
+    if(!r.ok) return [];
+    const obj = await r.json();
+    return Object.keys(obj || {}).map(uid => Object.assign({uid}, obj[uid]));
+  },
+
+  async approveRequest(req){
+    if(!App.can('manageMembers')) throw new Error('마스터만 승인할 수 있어요');
+    const m = App.member(req.member);
+    if(!m) throw new Error('그 프로필이 없어졌어요');
+    m.uid = req.uid;                       // 자리를 내어준다
+    App.save();
+    clearTimeout(this._pushTimer);
+    this._lastPushed = '';
+    await this.push();                     // 기다리는 기기가 이걸 보고 들어온다
+    App.render();
+    return m;
+  },
+
+  async rejectRequest(req){
+    if(!App.can('manageMembers')) throw new Error('마스터만 할 수 있어요');
+    await this._auth();
+    await fetch(this._url('/groups/' + App.state.sync.group + '/requests/' + req.uid), {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:'null' });
+    return true;
   },
 
   /* 공용 코드로 들어오는 예전 방식 — 초대 코드로 먼저 해석해 보고, 아니면 그룹 코드로 본다 */
@@ -9054,7 +9216,8 @@ window.ModSync = {
     return {
       members: s.members, schedules: s.schedules, todos: s.todos,
       reward: s.reward, coins: s.coins, doneEv: s.doneEv || {},
-      badges: s.badges || {}
+      badges: s.badges || {},
+      groupOpts: s.groupOpts || {approval:false}   // 그룹 정책 — 마스터가 정한다
     };
   },
 
@@ -9074,6 +9237,7 @@ window.ModSync = {
     if(typeof st.coins === 'number') s.coins = st.coins;
     if(st.doneEv) s.doneEv = st.doneEv;
     if(st.badges) s.badges = st.badges;
+    if(st.groupOpts) s.groupOpts = st.groupOpts;
 
     if(keepMe){
       /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */
@@ -9192,7 +9356,7 @@ window.ModSync = {
                  this.configured() ? '가족과 함께 쓰려면 그룹을 만들어 주세요' : '실시간 동기화는 아직 켜지지 않았어요'],
       connecting:['busy', '연결하는 중…',        ''],
       live:     ['live',  '가족과 연결됨',        App.state.sync && App.state.sync.group ? ('그룹 ' + App.state.sync.group) : ''],
-      busy:     ['busy',  '동기화 중…',          ''],
+      busy:     ['busy',  this.pending() ? '가족의 확인을 기다리는 중' : '동기화 중…', this._statusMsg],
       error:    ['err',   '연결 문제',            this._statusMsg]
     };
     const [cls, title, sub] = map[this._status] || map.off;
@@ -9227,7 +9391,28 @@ window.ModSync = {
              초대는 <b>누구로 들어올지 정해서</b> 발급합니다.
              받는 사람은 역할을 고를 수 없어서, 아이가 부모로 들어오는 일이 없어요.
            </p>
+           ${App.can('manageMembers') ? `
+             <div class="sy-opt" id="syApproval">
+               <span class="sy-opt-tx">
+                 <b>참여할 때 내 확인 받기</b>
+                 <small>초대 코드를 넣어도 내가 눌러줘야 연결돼요</small>
+               </span>
+               <span class="sy-sw ${this.needsApproval()?'on':''}"><i></i></span>
+             </div>
+             <div id="syReqs"></div>` : ''}
            <button class="btn line full" id="syLeave" style="margin-top:18px">이 기기 연결 끊기</button>
+         ` : this.pending() ? `
+           <div class="iv-card">
+             <div class="iv-card-av">${esc(this.pending().emoji||'🙂')}</div>
+             <div class="iv-card-nm">${esc(this.pending().name||'가족')}</div>
+             <div class="iv-card-rl">가족의 확인을 기다리는 중이에요</div>
+           </div>
+           <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.75;text-align:center">
+             마스터가 <b>확인해 주면 바로 연결</b>됩니다.<br>
+             이 화면을 닫아도 괜찮아요. 승인되면 알려드릴게요.
+           </p>
+           <button class="btn full" id="syCheck">지금 확인해 보기</button>
+           <button class="btn line full" id="syCancel" style="margin-top:10px">요청 취소하기</button>
          ` : `
            <button class="btn full" id="syCreate" style="margin-bottom:12px">새 가족 그룹 만들기</button>
            <div class="field" style="margin-top:18px">
@@ -9385,6 +9570,34 @@ window.ModSync = {
           setTimeout(() => this.openInviteIssue(), 240);
         };
 
+        /* 승인 대기 중인 기기 쪽 */
+        const chk = $('#syCheck');
+        if(chk) chk.onclick = async () => {
+          chk.textContent = '확인하는 중…'; chk.disabled = true;
+          const done = await this.checkPending().catch(() => false);
+          if(done) App.closeSheet();
+          else { chk.textContent = '지금 확인해 보기'; chk.disabled = false;
+                 App.toast('아직 확인 전이에요 · 조금만 기다려 주세요'); }
+        };
+        const cancel = $('#syCancel');
+        if(cancel) cancel.onclick = () => {
+          this.cancelPending(); App.closeSheet(); App.toast('요청을 취소했어요');
+        };
+
+        /* 마스터 — 승인 토글과 대기 목록 */
+        const ap = $('#syApproval');
+        if(ap) ap.onclick = async () => {
+          const sw = ap.querySelector('.sy-sw');
+          const next = !sw.classList.contains('on');
+          sw.classList.toggle('on', next);
+          try{
+            await this.setApproval(next);
+            App.toast(next ? '이제 참여할 때 확인을 받아요' : '확인 없이 바로 연결돼요');
+          }catch(e){ sw.classList.toggle('on', !next); App.toast(e.message || '바꾸지 못했어요'); }
+        };
+        const reqBox = $('#syReqs');
+        if(reqBox) this._paintRequests(reqBox);
+
         const copy = $('#syCopy');
         if(copy) copy.onclick = () => {
           const code = App.state.sync.group;
@@ -9402,6 +9615,41 @@ window.ModSync = {
           App.toast('연결을 끊었어요 · 같은 초대 코드로 다시 들어올 수 있어요');
         };
       });
+  },
+
+  /* 대기 목록을 그린다 — 시트가 열려 있는 동안만 */
+  async _paintRequests(box){
+    let reqs = [];
+    try{ reqs = await this.listRequests(); }catch(e){}
+    if(!box.isConnected) return;
+    if(!reqs.length){ box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="field" style="margin-top:16px"><label>기다리는 사람 ${reqs.length}명</label>
+        <div class="iv-list">
+          ${reqs.map(q => `<div class="iv-opt" style="cursor:default">
+            <span class="iv-av">${esc(q.emoji||'🙂')}</span>
+            <span class="iv-tx"><b>${esc(q.name||'가족')}</b><small>${esc(ROLE_LABEL[q.role]||'아이')}로 참여하려고 해요</small></span>
+            <span class="sy-reqbtns">
+              <button class="sy-no"  data-no="${esc(q.uid)}">거절</button>
+              <button class="sy-yes" data-yes="${esc(q.uid)}">확인</button>
+            </span></div>`).join('')}
+        </div>
+      </div>`;
+    const find = uid => reqs.find(x => x.uid === uid);
+    box.querySelectorAll('[data-yes]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try{
+        const m = await this.approveRequest(find(b.dataset.yes));
+        App.toast(`${m.emoji} ${m.name}의 참여를 확인했어요`);
+        if(window.ModSound) ModSound.play('complete');
+        this._paintRequests(box);
+      }catch(e){ b.disabled = false; App.toast(e.message || '확인하지 못했어요'); }
+    });
+    box.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try{ await this.rejectRequest(find(b.dataset.no)); App.toast('요청을 거절했어요'); this._paintRequests(box); }
+      catch(e){ b.disabled = false; App.toast(e.message || '거절하지 못했어요'); }
+    });
   },
 
   /* ================= 초대 발급 (마스터·권한자) ================= */
@@ -9564,6 +9812,11 @@ window.ModSync = {
         try{
           const r = await this.acceptInvite(inv, keep ? bundle : null);
           App.closeSheet();
+          if(r.pending){
+            App.toast(`${r.member.emoji} ${r.member.name} · 가족의 확인을 기다리는 중이에요`);
+            setTimeout(() => this.open(), 320);
+            return;
+          }
           App.toast(r.moved
             ? `${r.member.emoji} ${r.member.name} · 이 기기로 옮겨왔어요`
             : `${r.member.emoji} ${r.member.name}(으)로 참여했어요` + (r.merged ? ` · ${r.merged}개 가져옴` : ''));
@@ -9893,7 +10146,8 @@ App.renderDrawer=function(){
       <button class="dr-item" data-act="reset"><span class="em">↺</span>데이터 초기화</button>
     </div>
     <div style="padding:14px 20px calc(18px + env(safe-area-inset-bottom));font-size:11px;color:var(--muted);font-weight:600;line-height:1.5">
-      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
+      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서<br>
+      <a href="mailto:carksk@naver.com" style="color:var(--muted);text-decoration:none;border-bottom:1px solid var(--line)">개발/문의 carksk@naver.com</a>
     </div>`;
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}
