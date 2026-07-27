@@ -154,6 +154,27 @@ window.ModOnboard = {
       display:flex; align-items:center; justify-content:center; font-size:26px; }
     .ob-fam-label{ font-size:16.5px; font-weight:800; color:var(--ink); }
     .ob-fam-hint{ margin-top:22px; font-size:12px; font-weight:600; color:var(--muted); text-align:center; }
+
+    /* ---- 프로필 설정 패널 ---- */
+    .ob-pane{ display:none; width:100%; flex-direction:column; align-items:center; }
+    .ob-pane.on{ display:flex; animation:ob-pane-in .32s cubic-bezier(.22,1,.36,1) both; }
+    @keyframes ob-pane-in{ from{ opacity:0; transform:translateX(16px); } to{ opacity:1; transform:none; } }
+    .ob-fam-col{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .ob-fam-note{ font-size:12px; font-weight:600; color:var(--muted); }
+    .ob-name{
+      width:100%; height:52px; text-align:center; font-size:17px; font-weight:800;
+      margin-bottom:20px; letter-spacing:-.01em;
+    }
+    .ob-avatars{
+      width:100%; display:grid; grid-template-columns:repeat(4,1fr); gap:9px;
+    }
+    .ob-av{
+      height:58px; border-radius:16px; background:var(--paper); border:2px solid transparent;
+      box-shadow:var(--sh-1); font-size:26px; display:flex; align-items:center; justify-content:center;
+      transition:transform .16s cubic-bezier(.22,1,.36,1), border-color .18s, background .18s;
+    }
+    .ob-av:active{ transform:scale(.92); }
+    .ob-av.on{ border-color:var(--indigo); background:var(--indigo-s); transform:scale(1.06); }
   `,
 
   _root: null,
@@ -284,21 +305,71 @@ window.ModOnboard = {
       </div>
     `).join('');
 
+    const AV_CHILD = ['🐣','🐥','🦊','🐰','🐨','🐼','🦁','🐯','🐸','🐧','🦄','⭐️'];
+    const AV_ADULT = ['🌷','🌻','🐻','🦉','🍀','☕️','🌙','🏔','🎧','📚','🧡','🫶'];
+
     const famSlide = `
       <div class="ob-slide">
-        <div class="ob-fam">
-          <div class="ob-fam-mark">${this.brandMark(44)}</div>
-          <div class="ob-fam-title">누가 쓰나요?</div>
-          <div class="ob-fam-sub">고른 모습으로 하루를 보여드려요</div>
-          <div class="ob-fam-cards">
-            <button type="button" class="ob-fam-card" data-role="child">
-              <span class="ob-fam-emoji">🐣</span><span class="ob-fam-label">아이로 시작</span>
-            </button>
-            <button type="button" class="ob-fam-card" data-role="master">
-              <span class="ob-fam-emoji">🌷</span><span class="ob-fam-label">부모로 시작</span>
-            </button>
+        <div class="ob-fam" id="obSetup">
+
+          <!-- 1단계: 역할 -->
+          <div class="ob-pane on" data-pane="role">
+            <div class="ob-fam-mark">${this.brandMark(44)}</div>
+            <div class="ob-fam-title">누가 쓰나요?</div>
+            <div class="ob-fam-sub">고른 모습으로 하루를 보여드려요</div>
+            <div class="ob-fam-cards">
+              <button type="button" class="ob-fam-card" data-role="child">
+                <span class="ob-fam-emoji">🐣</span>
+                <span class="ob-fam-col"><b class="ob-fam-label">아이로 시작</b>
+                  <span class="ob-fam-note">내 하루를 보고 할 일을 해요</span></span>
+              </button>
+              <button type="button" class="ob-fam-card" data-role="master">
+                <span class="ob-fam-emoji">🌷</span>
+                <span class="ob-fam-col"><b class="ob-fam-label">부모로 시작</b>
+                  <span class="ob-fam-note">일정과 보상을 정해줄 수 있어요</span></span>
+              </button>
+            </div>
+            <div class="ob-fam-hint">나중에 메뉴에서 언제든 바꿀 수 있어요</div>
           </div>
-          <div class="ob-fam-hint">나중에 메뉴에서 언제든 바꿀 수 있어요</div>
+
+          <!-- 2단계: 아이 프로필 -->
+          <div class="ob-pane" data-pane="child">
+            <div class="ob-fam-title">아이는 어떻게 부를까요?</div>
+            <div class="ob-fam-sub">이름과 얼굴을 골라주세요</div>
+            <input class="inp ob-name" id="obChildName" placeholder="예: 루아" maxlength="10" autocomplete="off">
+            <div class="ob-avatars" id="obChildAv">
+              ${AV_CHILD.map((e,i)=>`<button type="button" class="ob-av ${i===0?'on':''}" data-e="${e}">${e}</button>`).join('')}
+            </div>
+          </div>
+
+          <!-- 3단계: 부모 프로필 -->
+          <div class="ob-pane" data-pane="parent">
+            <div class="ob-fam-title">부모님은 어떻게 부를까요?</div>
+            <div class="ob-fam-sub">이름과 얼굴을 골라주세요</div>
+            <input class="inp ob-name" id="obParentName" placeholder="예: 엄마" maxlength="10" autocomplete="off">
+            <div class="ob-avatars" id="obParentAv">
+              ${AV_ADULT.map((e,i)=>`<button type="button" class="ob-av ${i===0?'on':''}" data-e="${e}">${e}</button>`).join('')}
+            </div>
+          </div>
+
+          <!-- 4단계: 시작 방식 -->
+          <div class="ob-pane" data-pane="data">
+            <div class="ob-fam-title">어떻게 시작할까요?</div>
+            <div class="ob-fam-sub">언제든 메뉴에서 다시 비울 수 있어요</div>
+            <div class="ob-fam-cards">
+              <button type="button" class="ob-fam-card" data-start="empty">
+                <span class="ob-fam-emoji">🗓️</span>
+                <span class="ob-fam-col"><b class="ob-fam-label">빈 일정으로 시작</b>
+                  <span class="ob-fam-note">우리 가족 일정을 처음부터 채워요</span></span>
+              </button>
+              <button type="button" class="ob-fam-card" data-start="demo">
+                <span class="ob-fam-emoji">✨</span>
+                <span class="ob-fam-col"><b class="ob-fam-label">예시 일정 넣고 둘러보기</b>
+                  <span class="ob-fam-note">기능을 먼저 살펴보고 싶다면</span></span>
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
     `;
@@ -327,15 +398,54 @@ window.ModOnboard = {
   },
 
   _bindFlow(flow){
-    flow.querySelector('#obSkip').addEventListener('click', () => this._finish(null));
+    flow.querySelector('#obSkip').addEventListener('click', () => this._finish(null, false));
     flow.querySelector('#obNext').addEventListener('click', () => {
+      if(this._footAction) return;   // 마지막 화면의 전용 핸들러가 있으면 양보한다
       if(this._idx < 2) this._goStep(this._idx + 1);
-      else this._goStep(3);
+      else { this._setFoot(null); this._goStep(3); }
     });
-    flow.querySelectorAll('.ob-fam-card').forEach(btn => {
+    /* --- 마지막 화면: 역할 → 아이 → 부모 → 시작방식 --- */
+    const setup = flow.querySelector('#obSetup');
+    const pane = n => setup.querySelector('.ob-pane[data-pane="' + n + '"]');
+    const goPane = n => {
+      setup.querySelectorAll('.ob-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === n));
+      const inp = pane(n).querySelector('input');
+      if(inp) this._pushTimer(() => inp.focus(), 260);
+    };
+    const draft = { role:'child', child:{name:'', emoji:'🐣'}, parent:{name:'', emoji:'🌷'} };
+
+    setup.querySelectorAll('[data-role]').forEach(btn => {
       btn.addEventListener('click', () => {
-        if(App.haptic) App.haptic();
-        this._finish(btn.dataset.role);
+        draft.role = btn.dataset.role;
+        if(window.ModSound) ModSound.play('tap');
+        goPane('child');
+        this._setFoot('다음', () => {
+          draft.child.name = (pane('child').querySelector('#obChildName').value || '').trim() || '아이';
+          goPane('parent');
+          this._setFoot('다음', () => {
+            draft.parent.name = (pane('parent').querySelector('#obParentName').value || '').trim() || '부모';
+            goPane('data');
+            this._setFoot(null);
+          });
+        });
+      });
+    });
+
+    setup.querySelectorAll('.ob-avatars').forEach(grid => {
+      grid.addEventListener('click', e => {
+        const b = e.target.closest('.ob-av'); if(!b) return;
+        grid.querySelectorAll('.ob-av').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        const who = grid.id === 'obChildAv' ? 'child' : 'parent';
+        draft[who].emoji = b.dataset.e;
+        if(window.ModSound) ModSound.play('tap');
+      });
+    });
+
+    setup.querySelectorAll('[data-start]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if(window.ModSound) ModSound.play('check');
+        this._finish(draft, btn.dataset.start === 'demo');
       });
     });
 
@@ -366,7 +476,7 @@ window.ModOnboard = {
       this._progress.forEach((el, i) => el.classList.toggle('on', i === idx));
     }
     if(this._progressEl) this._progressEl.classList.toggle('ob-hide', idx === 3);
-    if(this._footEl) this._footEl.classList.toggle('ob-hide', idx === 3);
+    if(this._footEl) this._footEl.classList.toggle('ob-hide', idx === 3 && !this._footAction);
 
     const nextBtn = this._flow && this._flow.querySelector('#obNext');
     if(nextBtn) nextBtn.textContent = idx === 2 ? '시작하기' : '다음';
@@ -383,8 +493,34 @@ window.ModOnboard = {
     }
   },
 
-  _finish(role){
-    if(role) App.state.role = role;
+  /* 마지막 화면 전용: 하단 버튼 라벨/동작 교체. null 이면 숨김 */
+  _setFoot(label, onClick){
+    this._footAction = onClick || null;
+    const foot = this._footEl, btn = this._flow && this._flow.querySelector('#obNext');
+    const skip = this._flow && this._flow.querySelector('#obSkip');
+    if(!foot || !btn) return;
+    foot.classList.toggle('ob-hide', !onClick);
+    if(skip) skip.style.visibility = onClick ? 'hidden' : '';
+    if(onClick){
+      btn.textContent = label || '다음';
+      btn.onclick = e => { e.preventDefault(); onClick(); };
+    } else {
+      btn.onclick = null;
+    }
+  },
+
+  _finish(draft, useDemo){
+    if(draft && draft.role){
+      App.state.role = draft.role;
+      const m1 = App.state.members.find(m => m.id === 'm1');
+      const m2 = App.state.members.find(m => m.id === 'm2');
+      if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; }
+      if(m2){ m2.name = draft.parent.name || '부모'; m2.emoji = draft.parent.emoji || '🌷'; }
+      const me = App.state.role === 'master' ? m2 : m1;
+      if(me) App.state.me = { name: me.name, emoji: me.emoji, role: App.state.role };
+    }
+    this._footAction = null;
+    if(useDemo && App.applyDemo) App.applyDemo();
     App.state.onboarded = true;
     App.save();
     this._clearTimers();

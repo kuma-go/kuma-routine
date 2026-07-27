@@ -240,6 +240,36 @@ App.openSim=function(){
     .pinpad button:active{background:var(--indigo-s);transform:scale(.95)}
     .pinpad button.ghosted{font-size:13px;font-weight:800;color:var(--muted);background:transparent}
 
+    /* ===== 액션 버튼 컬러 일원화 =====
+       주요 액션은 전부 인디고 채움. 오렌지는 '지금/시간' 표시에만 남긴다. */
+    .rw-play-btn, .rw-real-btn, .rw-spin-btn,
+    .td-add-btn.solid, .fm-share-cta.btn{
+      background:var(--indigo)!important; color:#fff!important;
+      box-shadow:0 3px 12px rgba(75,63,212,.26)!important;
+    }
+    .rw-play-btn:disabled, .rw-real-btn:disabled, .rw-spin-btn:disabled{
+      background:#DEDEE7!important; color:#9A9AA8!important; box-shadow:none!important;
+    }
+    .rw-retry-btn{ background:var(--indigo-s)!important; color:var(--indigo)!important; box-shadow:none!important; }
+    .ad-cta{ background:var(--indigo)!important; color:#fff!important; box-shadow:none!important; }
+    #phone.th-dark .ad-cta{ background:#7A6EEA!important; color:#fff!important; }
+    /* 광고 CTA 는 채움이므로 흰 배경 규칙을 덮는다 */
+    .gobtn.on{ background:var(--indigo)!important; color:#fff!important; }
+    .gobtn.on .ck{ background:#fff!important; border-color:#fff!important; }
+    .gobtn.on .ck::after{ border-color:var(--indigo)!important; }
+    /* 위험 액션 = 채워진 빨강 */
+    #fDel, .td-del-btn, .fm-del-btn{
+      background:#E0483C!important; color:#fff!important; border:0!important;
+      box-shadow:0 3px 12px rgba(224,72,60,.24)!important;
+    }
+    #phone.th-dark .btn.line{ background:#2A2A36!important; color:#C9C9DA!important; }
+    /* 선택 상태 표시도 인디고로 (오렌지는 '지금/시간' 전용) */
+    .rw-gamechip.on{ border-color:var(--indigo)!important; background:var(--indigo-s)!important; color:var(--indigo)!important; }
+    .rw-benefit-badge{ background:var(--indigo-s)!important; color:var(--indigo)!important; }
+    .rw-benefit-cost b{ color:var(--indigo)!important; }
+    #phone.th-dark .rw-gamechip.on{ background:rgba(122,110,234,.18)!important; color:#B7AEFF!important; border-color:#7A6EEA!important; }
+    #phone.th-dark .rw-benefit-badge{ background:rgba(122,110,234,.18)!important; color:#B7AEFF!important; }
+
     /* 보상 결과 카드 다크 대응 (모듈 CSS의 하드코딩 그라디언트 덮어쓰기) */
     #phone.th-dark .rw-result.gold{background:linear-gradient(135deg,#4A3A12,#6B5518)}
     #phone.th-dark .rw-result.silver{background:linear-gradient(135deg,#2A2C36,#3B3E4C)}

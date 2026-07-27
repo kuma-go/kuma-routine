@@ -50,7 +50,13 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 }
 @media (max-width:430px),(max-height:860px){
   body{display:block}
-  .phone{width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none}
+  .phone{
+    width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;
+    /* 노치·상태바 안전영역 확보 */
+    padding-top:env(safe-area-inset-top,0px);
+    padding-left:env(safe-area-inset-left,0px);
+    padding-right:env(safe-area-inset-right,0px);
+  }
 }
 
 /* ========== AD ========== */
@@ -242,9 +248,14 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
   transition:.15s;
 }
 .btn:active{transform:scale(.96)}
-.btn.ghost{background:var(--indigo-s);color:var(--indigo)}
-.btn.warm{background:var(--orange);box-shadow:0 4px 14px rgba(255,90,0,.32)}
-.btn.line{background:#fff;border:1.5px solid var(--line);color:var(--ink2)}
+/* 액션 버튼 체계
+   주요 액션 = 인디고 채움 / 보조 = 중립 채움 / 위험 = 빨강 채움
+   오렌지는 버튼이 아니라 '지금·시간' 강조에만 쓴다 */
+.btn{box-shadow:0 3px 12px rgba(75,63,212,.26)}
+.btn.ghost{background:var(--indigo-s);color:var(--indigo);box-shadow:none}
+.btn.warm{background:var(--indigo);box-shadow:0 3px 12px rgba(75,63,212,.26)}
+.btn.line{background:#ECECF3;border:0;color:var(--ink2);box-shadow:none}
+.btn.danger{background:#E0483C;color:#fff;box-shadow:0 3px 12px rgba(224,72,60,.26)}
 .btn.full{width:100%}
 .btn[disabled]{opacity:.4;pointer-events:none}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:800}
@@ -460,13 +471,19 @@ textarea.inp{height:78px;padding:12px 13px;resize:none;line-height:1.5}
   transition:none!important;cursor:grabbing;overflow:visible!important}
 .slots.dragmode .card:not(.dragging){opacity:.5!important;filter:saturate(.7)}
 .dragtip{
-  position:absolute;left:50%;top:-1px;transform:translate(-50%,-100%);
-  background:var(--ink);color:#fff;font-size:12px;font-weight:800;padding:5px 12px;border-radius:14px;
-  white-space:nowrap;pointer-events:none;box-shadow:var(--sh-2);z-index:6;
-  font-variant-numeric:tabular-nums;
+  position:absolute;left:50%;top:-3px;transform:translate(-50%,-100%);
+  background:#4B3FD4;color:#fff;font-size:14px;font-weight:800;padding:7px 15px;border-radius:16px;
+  white-space:nowrap;pointer-events:none;z-index:6;
+  letter-spacing:-.01em;font-variant-numeric:tabular-nums;
+  box-shadow:0 6px 18px rgba(30,20,90,.34);
+  text-shadow:0 1px 1px rgba(0,0,0,.22);
 }
-.dragtip::after{content:'';position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
-  border:5px solid transparent;border-top-color:var(--ink);border-bottom:0}
+.dragtip::after{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);
+  border:6px solid transparent;border-top-color:#4B3FD4;border-bottom:0}
+.dragbar{
+  background:linear-gradient(180deg,rgba(40,30,140,.94),rgba(40,30,140,0));
+  text-shadow:0 1px 2px rgba(0,0,0,.3);font-size:12.5px;
+}
 .rsz{
   position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
   width:52px;height:20px;display:flex;align-items:center;justify-content:center;
@@ -583,15 +600,21 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 
 const SEED={
   role:'child',
-  me:{name:'루아',emoji:'🐣',role:'child'},
+  onboarded:false,
+  me:{name:'',emoji:'',role:'child'},
   members:[
-    {id:'m1',name:'루아',emoji:'🐣',role:'child',color:'#7B96EF'},
-    {id:'m2',name:'엄마',emoji:'🌷',role:'master',color:'#EEB6EC'},
-    {id:'m3',name:'아빠',emoji:'🐻',role:'master',color:'#C9B08A'}
+    {id:'m1',name:'아이',emoji:'🐣',role:'child',color:'#7B96EF'},
+    {id:'m2',name:'부모',emoji:'🌷',role:'master',color:'#EEB6EC'}
   ],
   inviteCode:'HRK-4821',
-  coins:120,
+  coins:0,
   reward:{mode:'game',realBenefit:'주말 놀이공원 가기',cost:80,tier:null,history:[]},
+  schedules:{m1:{},m2:{}},
+  todos:[]
+};
+
+/* 둘러보기용 예시 데이터 — 온보딩에서 선택했을 때만 주입한다 */
+const DEMO={
   schedules:{
    m1:{
     1:[
@@ -697,6 +720,7 @@ const SEED={
     {id:'u5',day:0,for:'m2',text:'다음 주 식단 짜기',coin:0,done:false,secret:false,owner:'m2'}
   ]
 };
+window.DEMO=DEMO;
 
 const App={
   state:JSON.parse(JSON.stringify(SEED)),
@@ -719,6 +743,23 @@ const App={
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
   todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||'m1')===k&&t.day===day); },
   canSetCoin(){ return this.isMaster()&&this.vm()==='m1'; },
+
+  /* 둘러보기용 예시 데이터 주입 (온보딩에서 선택했을 때만) */
+  applyDemo(){
+    const d=JSON.parse(JSON.stringify(DEMO));
+    if(!this.state.members.some(m=>m.id==='m3'))
+      this.state.members.push({id:'m3',name:'아빠',emoji:'🐻',role:'master',color:'#C9B08A'});
+    this.state.schedules=d.schedules;
+    this.state.todos=d.todos;
+    this.state.coins=120;
+    this.state.demo=true;
+    this.save();
+  },
+  hasAnyData(){
+    const s=this.state.schedules||{};
+    const anySched=Object.keys(s).some(k=>Object.keys(s[k]||{}).some(d=>(s[k][d]||[]).length));
+    return anySched||(this.state.todos||[]).length>0;
+  },
 
   save(){ try{localStorage.setItem('haruk',JSON.stringify(this.state))}catch(e){} },
   load(){ try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){} },
@@ -950,7 +991,7 @@ const App={
 
     const none=!(this.sched()[this.day]||[]).length;
     root.innerHTML=`<div class="tt">
-      <div class="tt-gutter"><div class="ampm" id="ampm"><div class="hair"></div><b class="am">오전(AM)</b><b class="pm">오후(PM)</b></div></div>
+      <div class="tt-gutter">${none?'':`<div class="ampm" id="ampm"><div class="hair"></div><b class="am">오전(AM)</b><b class="pm">오후(PM)</b></div>`}</div>
       <div class="slots" id="slots">${html||''}</div>
       ${isToday?`<div class="nowline" id="nowline"><div class="ln"></div><div class="cp" id="nowchip"></div></div>`:''}
     </div>
