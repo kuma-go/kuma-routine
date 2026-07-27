@@ -324,6 +324,9 @@ window.ModFamily = {
   },
 
   _roleSwitchHtml(role){
+    const ms = App.state.members || [];
+    const kid = ms.find(m => m.id === 'm1') || ms.find(m => m.role === 'child') || {};
+    const par = ms.find(m => m.id === 'm2') || ms.find(m => m.role === 'master') || {};
     const hint = role === 'master'
       ? '부모 모드에서는 보상과 할 일을 설정할 수 있어요'
       : '아이 모드에서는 오늘 할 일과 일정을 확인할 수 있어요';
@@ -331,8 +334,10 @@ window.ModFamily = {
       <div class="fm-role-switch">
         <div class="sec-h" style="margin-bottom:8px;"><h2>지금 보는 사람</h2></div>
         <div class="fm-role-track">
-          <button type="button" class="fm-role-opt ${role === 'child' ? 'on' : ''}" data-role="child">🐣 루아</button>
-          <button type="button" class="fm-role-opt ${role === 'master' ? 'on' : ''}" data-role="master">🌷 엄마</button>
+          <button type="button" class="fm-role-opt ${role === 'child' ? 'on' : ''}" data-role="child">
+            <span class="fm-role-em">${esc(kid.emoji || '🐣')}</span>${esc(kid.name || '아이')}</button>
+          <button type="button" class="fm-role-opt ${role === 'master' ? 'on' : ''}" data-role="master">
+            <span class="fm-role-em">${esc(par.emoji || '🌷')}</span>${esc(par.name || '부모')}</button>
         </div>
         <div class="fm-role-hint">${hint}</div>
       </div>

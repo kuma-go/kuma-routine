@@ -223,6 +223,8 @@ App.openSim=function(){
   const a11y=document.createElement('style');
   a11y.textContent=`
     .td-coin,.rw-benefit-cost b,.rw-hist-cost{color:#C43F00}
+    #phone.th-dark .td-coin{ background:rgba(255,140,60,.16)!important; color:#FFB27A!important; }
+    #phone.th-dark .rw-hist-cost{ color:#FFB27A!important; }
     .rw-gamechip{min-height:44px}
     .rw-gamechips{position:relative;mask-image:linear-gradient(90deg,#000 0,#000 88%,transparent 100%);
       -webkit-mask-image:linear-gradient(90deg,#000 0,#000 88%,transparent 100%)}
@@ -263,7 +265,38 @@ App.openSim=function(){
       box-shadow:0 3px 12px rgba(224,72,60,.24)!important;
     }
     #phone.th-dark .btn.line{ background:#2A2A36!important; color:#C9C9DA!important; }
-    /* 선택 상태 표시도 인디고로 (오렌지는 '지금/시간' 전용) */
+    /* ===== 선택 표시 = 테두리 + 컬러 / 액션 버튼 = 채움 =====
+       셀렉트 컨트롤은 절대 채움으로 그리지 않는다. */
+    .btn.ghost{ background:var(--indigo)!important; color:#fff!important;
+      box-shadow:0 3px 12px rgba(75,63,212,.26)!important; }
+    .td-add-btn, .td-goto-reward.btn{ background:var(--indigo)!important; color:#fff!important; }
+
+    .td-day-chip{ background:transparent!important; border:1.6px solid var(--line)!important;
+      color:var(--muted)!important; transition:.18s cubic-bezier(.22,1,.36,1)!important; }
+    .td-day-chip.today{ box-shadow:none!important; border-color:var(--orange)!important; color:var(--orange)!important; }
+    .td-day-chip.on{ background:var(--indigo-s)!important; border-color:var(--indigo)!important;
+      color:var(--indigo)!important; box-shadow:none!important; }
+    .td-day-chip.on .td-day-label{ color:var(--indigo)!important; }
+    .td-day-chip.on .td-day-dot{ background:var(--orange)!important; color:#fff!important; }
+    #phone.th-dark .td-day-chip{ border-color:#3A3A48!important; }
+    #phone.th-dark .td-day-chip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
+    #phone.th-dark .td-day-chip.on .td-day-label{ color:#B7AEFF!important; }
+    #phone.th-dark .pchip{ border-color:#33333F!important; }
+    #phone.th-dark .pchip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
+    #phone.th-dark .tab.on .tico{ background:rgba(122,110,234,.16)!important; box-shadow:inset 0 0 0 1.7px #7A6EEA!important; }
+
+    /* 역할 스위처: 세그먼트도 테두리 + 컬러로 */
+    .fm-role-track{ background:transparent!important; padding:0!important; gap:8px!important; }
+    .fm-role-opt{ background:transparent!important; opacity:1!important;
+      border:1.6px solid var(--line)!important; color:var(--muted)!important; box-shadow:none!important; }
+    .fm-role-opt.on{ background:var(--indigo-s)!important; border-color:var(--indigo)!important;
+      color:var(--indigo)!important; box-shadow:none!important; }
+    .fm-role-opt.on[data-role="master"]{ color:var(--indigo)!important; }
+    .fm-role-em{ font-size:17px; }
+    #phone.th-dark .fm-role-opt{ border-color:#33333F!important; }
+    #phone.th-dark .fm-role-opt.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
+
+    /* 나머지 선택 상태 */
     .rw-gamechip.on{ border-color:var(--indigo)!important; background:var(--indigo-s)!important; color:var(--indigo)!important; }
     .rw-benefit-badge{ background:var(--indigo-s)!important; color:var(--indigo)!important; }
     .rw-benefit-cost b{ color:var(--indigo)!important; }
@@ -292,8 +325,9 @@ App.openSim=function(){
 
   const extra=document.createElement('style');
   extra.textContent=`
-    .daychip{width:38px;height:38px;border-radius:12px;border:1.5px solid var(--line);background:#FAFAFC;font-weight:800;font-size:14px;color:var(--muted);transition:.15s}
-    .daychip.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+    .daychip{width:42px;height:42px;border-radius:13px;border:1.6px solid var(--line);background:transparent;font-weight:800;font-size:14px;color:var(--muted);transition:.18s cubic-bezier(.22,1,.36,1)}
+    .daychip:active{transform:scale(.92)}
+    .daychip.on{background:var(--indigo-s);border-color:var(--indigo);color:var(--indigo)}
     select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23A3A3AF' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;padding-right:30px}
   `;
   document.head.appendChild(extra);
@@ -332,13 +366,13 @@ App.openSim=function(){
   stage.addEventListener('touchend',e=>{
     if(x0===null||App.tab!=='time'||App.view!=='day')return;
     const dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
-    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){App.setDay(App.day+(dx<0?1:-1));App.haptic();}
+    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){const dir=dx<0?1:-1;App.setDay(App.day+dir,dir);App.haptic();if(window.ModSound)ModSound.play('tap');}
     x0=null;
   },{passive:true});
   document.addEventListener('keydown',e=>{
     if(App.tab!=='time')return;
-    if(e.key==='ArrowRight')App.setDay(App.day+1);
-    if(e.key==='ArrowLeft')App.setDay(App.day-1);
+    if(e.key==='ArrowRight')App.setDay(App.day+1,1);
+    if(e.key==='ArrowLeft')App.setDay(App.day-1,-1);
     if(e.key==='Escape')App.closeSheet();
   });
 
