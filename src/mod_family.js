@@ -515,8 +515,10 @@ window.ModFamily = {
           <span>역할 바꾸기<small>부모 또는 아이로 바꿔요</small></span></button>`}
         ${isMaster ? '' : `<button type="button" data-menu="transfer"><span class="fm-menu-em">👑</span>
           <span>마스터 넘기기<small>${m.role === 'parent' ? '이 사람을 마스터로 만들어요' : '부모 역할인 가족에게만 넘길 수 있어요'}</small></span></button>`}
-        ${(!m.uid && !isMaster && syncOn && App.can('invite')) ? `<button type="button" data-menu="invite"><span class="fm-menu-em">💌</span>
-          <span>초대 코드 보내기<small>이 프로필로 기기를 연결해요</small></span></button>` : ''}
+        ${(!isMaster && syncOn && App.can('invite')) ? `<button type="button" data-menu="invite"><span class="fm-menu-em">💌</span>
+          <span>초대 코드 ${m.invite ? '보기' : '보내기'}<small>${m.uid ? '기기를 바꿔도 같은 코드를 다시 쓰면 돼요' : '이 프로필로 기기를 연결해요'}</small></span></button>` : ''}
+        ${(m.uid && m.id !== App.meId() && syncOn && App.can('manageMembers')) ? `<button type="button" data-menu="unlink"><span class="fm-menu-em">🔌</span>
+          <span>기기 연결 끊기<small>폰을 잃어버렸을 때 · 초대 코드는 그대로예요</small></span></button>` : ''}
       </div>
     `;
 
@@ -529,7 +531,24 @@ window.ModFamily = {
           else if(a === 'perm') this._openPermFor(id);
           else if(a === 'role') this._openRoleSheet(id);
           else if(a === 'transfer') this._openTransferConfirm(id);
-          else if(a === 'invite'){ App.closeSheet(); setTimeout(() => ModSync.openInviteIssue(), 240); }
+          else if(a === 'invite'){
+            App.closeSheet();
+            setTimeout(async () => {
+              try{
+                const tok = await ModSync.createInvite(id);
+                ModSync.showInviteCode(tok, App.member(id));
+              }catch(e){ App.toast(e.message || '초대 코드를 만들지 못했어요'); }
+            }, 240);
+          }
+          else if(a === 'unlink'){
+            App.closeSheet();
+            setTimeout(async () => {
+              try{
+                const mm = await ModSync.unlinkDevice(id);
+                App.toast(`${mm.emoji} ${mm.name}의 기기 연결을 끊었어요`);
+              }catch(e){ App.toast(e.message || '끊지 못했어요'); }
+            }, 240);
+          }
         });
       });
     });

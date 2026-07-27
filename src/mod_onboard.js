@@ -510,7 +510,11 @@ window.ModOnboard = {
   },
 
   _finish(draft, useDemo){
-    if(draft && draft.role){
+    /* 이미 가족 그룹에 들어가 있으면 프로필을 절대 건드리지 않는다.
+       소개 화면을 다시 보거나, 초대를 수락한 직후에 온보딩이 끝나면서
+       가족이 정해 둔 이름·이모지·역할을 덮어쓰던 문제가 있었다. */
+    const inGroup = !!(window.ModSync && ModSync.enabled && ModSync.enabled());
+    if(draft && draft.role && !inGroup){
       const m1 = App.state.members.find(m => m.id === 'm1');
       const m2 = App.state.members.find(m => m.id === 'm2');
       if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; m1.role='child'; }

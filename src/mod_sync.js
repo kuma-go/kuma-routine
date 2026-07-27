@@ -237,19 +237,33 @@ window.ModSync = {
 
   /* ---------- 지정 초대 ----------
      "누구로 들어올지"를 초대장에 적어서 발급한다.
-     받는 사람은 역할을 고를 수 없다 — 아이가 부모로 들어오는 일을 막는다. */
-  async createInvite(memberId){
+     받는 사람은 역할을 고를 수 없다 — 아이가 부모로 들어오는 일을 막는다.
+
+     코드는 1회용이 아니라 **그 사람의 코드**다.
+     사파리에서 수락한 뒤 홈 화면에 앱을 설치하면 저장소가 새로 잡히는데,
+     같은 코드를 다시 넣으면 같은 사람으로 이어붙는다. 기기를 바꿔도 마찬가지다.
+     새 코드가 필요하면 마스터가 재발급하면 예전 코드는 죽는다. */
+  async createInvite(memberId, opt){
     if(!this.enabled()) throw new Error('먼저 가족 그룹을 만들어 주세요');
     if(!App.can('invite')) throw new Error('초대할 권한이 없어요');
     const m = App.member(memberId);
     if(!m) throw new Error('그 프로필을 찾지 못했어요');
     if(m.role === 'master') throw new Error('마스터는 초대로 넘길 수 없어요');
     await this._auth();
+
+    /* 이미 발급된 코드가 있으면 그대로 다시 보여준다 (재발급이 아니라면) */
+    const reissue = !!(opt && opt.reissue);
+    if(m.invite && !reissue) return m.invite;
+
+    const old = m.invite;
+    const token = this.newCode();
+    m.invite = token;
+    App.save();
     /* 방금 만든 프로필이 아직 안 올라갔을 수 있다.
        초대장을 먼저 뿌리면 받는 쪽이 "그런 사람 없다"를 보게 된다. */
     clearTimeout(this._pushTimer);
     await this.push();
-    const token = this.newCode();
+
     const r = await fetch(this._url('/invites/' + token), {
       method:'PUT', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -258,7 +272,11 @@ window.ModSync = {
         by: this._uid, at: Date.now()
       })
     });
-    if(!r.ok) throw new Error(await this._errText(r));
+    if(!r.ok){ m.invite = old || null; App.save(); throw new Error(await this._errText(r)); }
+    /* 재발급이면 예전 코드를 무효로 만든다 */
+    if(reissue && old && old !== token){
+      try{ await fetch(this._url('/invites/' + old), {method:'PUT',headers:{'Content-Type':'application/json'},body:'null'}); }catch(e){}
+    }
     return token;
   },
 
@@ -270,8 +288,8 @@ window.ModSync = {
     const r = await fetch(this._url('/invites/' + token));
     if(!r.ok) throw new Error(await this._errText(r));
     const inv = await r.json();
-    if(!inv) throw new Error('그 초대 코드를 찾지 못했어요');
-    if(inv.usedBy && inv.usedBy !== this._uid) throw new Error('이미 사용된 초대 코드예요');
+    if(!inv) throw new Error('그 초대 코드를 찾지 못했어요 · 가족에게 다시 받아 주세요');
+    /* 이미 쓴 코드도 막지 않는다 — 같은 사람이 기기를 바꾸거나 앱을 새로 깐 경우다 */
     return Object.assign({token}, inv);
   },
 
@@ -289,8 +307,10 @@ window.ModSync = {
     if(g.state) this._applyRemote(g.state, {keepMe:false});
     const mine = App.state.members.find(m => m.id === inv.member);
     if(!mine) throw new Error('초대된 프로필이 그룹에서 사라졌어요');
-    if(mine.uid && mine.uid !== this._uid) throw new Error('그 프로필은 이미 다른 기기가 쓰고 있어요');
 
+    /* 같은 코드로 다시 들어오면 같은 사람이다.
+       기기를 바꿨거나, 브라우저에서 쓰다가 앱을 설치한 경우가 여기에 해당한다. */
+    const moved = !!(mine.uid && mine.uid !== this._uid);
     mine.uid = this._uid;
     App.state.meId = mine.id;
     App.state.sync.group = code;
@@ -311,10 +331,30 @@ window.ModSync = {
       body: JSON.stringify({ usedBy: this._uid, usedAt: Date.now() })
     });
 
+    /* 올리기 직전에 프로필만 다시 읽는다.
+       내가 확인 화면을 보고 있는 사이 가족이 이름·이모지를 바꿨을 수 있는데,
+       그걸 내 오래된 사본으로 덮어쓰면 "프로필이 초기화됐다"가 된다. */
+    try{
+      const fr = await fetch(this._url('/groups/' + code + '/state/members'));
+      if(fr.ok){
+        const fresh = await fr.json();
+        if(Array.isArray(fresh) && fresh.length){
+          App.state.members = fresh.map(fm => {
+            const local = (App.state.members||[]).find(x => x.id === fm.id) || {};
+            const out = Object.assign({role:'child',uid:null,perm:null}, fm);
+            if(out.id === mine.id) out.uid = this._uid;      // 내 바인딩만 얹는다
+            if(!out.invite && local.invite) out.invite = local.invite;
+            return out;
+          });
+          App.migrate();
+        }
+      }
+    }catch(e){ /* 못 읽으면 방금 받은 사본을 그대로 쓴다 */ }
+
     App.save();
     this.connect();
     await this.push();                       // 내 uid 바인딩과 합친 데이터를 곧바로 올린다
-    return { code, member: mine, merged };
+    return { code, member: App.member(mine.id), merged, moved };
   },
 
   /* 공용 코드로 들어오는 예전 방식 — 초대 코드로 먼저 해석해 보고, 아니면 그룹 코드로 본다 */
@@ -327,15 +367,43 @@ window.ModSync = {
     throw new Error('초대 코드를 찾지 못했어요 · 가족에게 새로 발급받아 주세요');
   },
 
-  leaveGroup(){
-    this.disconnect();
+  /* 연결 끊기 — 끊기 전에 "기기 없음"을 먼저 올려야 가족 화면에 반영된다.
+     예전에는 sync.on 을 먼저 꺼버려서 push 가 그냥 무시됐고,
+     마스터 쪽에는 계속 연결된 것처럼 보였다. */
+  async leaveGroup(){
     const me = App.member(App.meId());
-    if(me && me.uid === this._uid) me.uid = null;   // 이 기기의 바인딩만 푼다
+    const wasOn = this.enabled();
+    if(me && me.uid === this._uid){
+      me.uid = null;
+      if(wasOn){
+        try{
+          clearTimeout(this._pushTimer);
+          this._lastPushed = '';        // 강제로 한 번 올린다
+          await this.push();
+        }catch(e){ /* 못 올려도 로컬 연결은 끊는다 */ }
+      }
+    }
+    this.disconnect();
     App.state.sync.group = null;
     App.state.sync.on = false;
     App.save();
     this._setStatus('off','');
     App.render();
+  },
+
+  /* 마스터가 남의 기기 연결을 떼어낸다 (그 사람 폰을 잃어버렸을 때 등) */
+  async unlinkDevice(memberId){
+    if(!App.can('manageMembers')) throw new Error('마스터만 할 수 있어요');
+    const m = App.member(memberId);
+    if(!m) throw new Error('그 프로필을 찾지 못했어요');
+    if(m.id === App.meId()) throw new Error('내 기기는 여기서 뗄 수 없어요');
+    m.uid = null;
+    App.save();
+    clearTimeout(this._pushTimer);
+    this._lastPushed = '';
+    await this.push();
+    App.render();
+    return m;
   },
 
   /* 마스터 위임 — 한 번에 두 사람을 바꿔야 마스터가 둘이 되지 않는다 */
@@ -706,10 +774,11 @@ window.ModSync = {
         };
 
         const leave = $('#syLeave');
-        if(leave) leave.onclick = () => {
-          this.leaveGroup();
+        if(leave) leave.onclick = async () => {
+          leave.textContent = '끊는 중…'; leave.disabled = true;
+          await this.leaveGroup();          // 가족에게 "기기 없음"을 먼저 알린 뒤 끊는다
           App.closeSheet();
-          App.toast('연결을 끊었어요 · 이 기기에서만 사용해요');
+          App.toast('연결을 끊었어요 · 같은 초대 코드로 다시 들어올 수 있어요');
         };
       });
   },
@@ -717,27 +786,30 @@ window.ModSync = {
   /* ================= 초대 발급 (마스터·권한자) ================= */
   openInviteIssue(){
     if(!App.can('invite')) return App.toast('초대할 권한이 없어요');
-    const open  = App.state.members.filter(m => !m.uid && m.role !== 'master');
-    const taken = App.state.members.filter(m =>  m.uid);
+    const list = App.state.members.filter(m => m.role !== 'master');
 
     const body = `
       <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
         <b>누구로 들어올지</b> 먼저 정해요.<br>
         받는 사람은 역할을 바꿀 수 없어서 안전합니다.
       </p>
-      ${open.length ? `
-        <div class="field"><label>기다리고 있는 프로필</label>
+      ${list.length ? `
+        <div class="field"><label>가족 프로필</label>
           <div class="iv-list">
-            ${open.map(m => `<button class="iv-opt" data-id="${esc(m.id)}">
+            ${list.map(m => `<button class="iv-opt" data-id="${esc(m.id)}">
                 <span class="iv-av">${esc(m.emoji)}</span>
-                <span class="iv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}</small></span>
-                <span class="iv-go">초대 →</span>
+                <span class="iv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}${m.uid?' · 기기 연결됨':''}</small></span>
+                <span class="iv-go">${m.invite?'코드 보기':'초대'} →</span>
               </button>`).join('')}
           </div>
+          <p style="margin:9px 2px 0;font-size:11.5px;font-weight:700;color:var(--muted);line-height:1.6">
+            이미 연결된 사람도 <b>같은 코드</b>를 다시 쓸 수 있어요.<br>
+            기기를 바꾸거나 앱을 새로 설치했을 때 넣으면 됩니다.
+          </p>
         </div>` : `
         <div class="panel" style="padding:14px 15px;margin-bottom:16px">
           <div style="font-size:12.5px;font-weight:700;color:var(--ink2);line-height:1.6">
-            초대할 수 있는 빈 프로필이 없어요.<br>아래에서 새로 만들어 주세요.
+            초대할 프로필이 없어요.<br>아래에서 새로 만들어 주세요.
           </div>
         </div>`}
       <div class="field" style="margin-top:6px"><label>새로 만들어 초대하기</label>
@@ -748,7 +820,7 @@ window.ModSync = {
         </div>
       </div>
       <button class="btn full" id="ivNew">만들고 초대 코드 받기</button>
-      ${taken.length ? `<p class="sy-note">이미 기기가 연결된 사람 · ${taken.map(m=>esc(m.emoji+' '+m.name)).join(', ')}</p>` : ''}`;
+      `;
 
     App.sheet('가족 초대하기', body, `<button class="btn line full" id="ivC">닫기</button>`, (b,f) => {
       f.querySelector('#ivC').onclick = () => App.closeSheet();
@@ -790,11 +862,14 @@ window.ModSync = {
       <div class="sy-code">${esc(token)}</div>
       <button class="btn full" id="ivCopy">초대 링크 복사하기</button>
       <p class="sy-note">
-        이 코드는 <b>한 번만</b> 쓸 수 있어요. 링크를 열면 바로 참여 화면이 뜹니다.<br>
-        코드만 알려줘도 되고, 상대가 <b>가족 그룹 → 초대 코드로 참여하기</b> 에 넣으면 됩니다.
+        이 코드는 <b>${esc((member||{}).name||'이 사람')} 전용</b>이에요. 여러 번 써도 됩니다.<br>
+        <b>브라우저에서 쓰다가 홈 화면에 앱을 설치했다면</b>, 앱에서 같은 코드를 한 번 더 넣어 주세요.
+        같은 사람으로 이어집니다. 기기를 바꿀 때도 마찬가지예요.
       </p>
-      ${window.ModQR ? `<div id="ivQR" style="display:flex;justify-content:center;margin-top:16px"></div>` : ''}`;
-    App.sheet('초대 코드가 나왔어요', body, `<button class="btn line full" id="ivkC">닫기</button>`, (b,f) => {
+      ${window.ModQR ? `<div id="ivQR" style="display:flex;justify-content:center;margin-top:16px"></div>` : ''}
+      ${App.can('invite') ? `<button class="btn line full" id="ivRe" style="margin-top:18px">코드 새로 만들기</button>
+      <p class="sy-note">코드가 남에게 새어 나갔을 때만 쓰세요. 새로 만들면 <b>예전 코드는 못 쓰게</b> 됩니다.</p>` : ''}`;
+    App.sheet('초대 코드', body, `<button class="btn line full" id="ivkC">닫기</button>`, (b,f) => {
       f.querySelector('#ivkC').onclick = () => App.closeSheet();
       b.querySelector('#ivCopy').onclick = () => {
         const txt = `KUMA routine 가족 초대\n${(member||{}).name||''} 님으로 참여해 주세요\n${url}`;
@@ -802,6 +877,19 @@ window.ModSync = {
           navigator.clipboard.writeText(txt).then(() => App.toast('초대 링크를 복사했어요'))
             .catch(() => App.toast('복사에 실패했어요'));
         else App.toast('복사에 실패했어요');
+      };
+      const re = b.querySelector('#ivRe');
+      if(re) re.onclick = async () => {
+        re.textContent = '만드는 중…'; re.disabled = true;
+        try{
+          const t2 = await this.createInvite((member||{}).id, {reissue:true});
+          App.closeSheet();
+          setTimeout(() => this.showInviteCode(t2, App.member((member||{}).id)), 260);
+          App.toast('새 코드를 만들었어요 · 예전 코드는 이제 안 돼요');
+        }catch(e){
+          re.textContent = '코드 새로 만들기'; re.disabled = false;
+          App.toast(e.message || '만들지 못했어요');
+        }
       };
       const q = b.querySelector('#ivQR');
       if(q && window.ModQR && ModQR.render) { try{ ModQR.render(q, url, 168); }catch(e){} }
@@ -855,7 +943,9 @@ window.ModSync = {
         try{
           const r = await this.acceptInvite(inv, keep ? bundle : null);
           App.closeSheet();
-          App.toast(`${r.member.emoji} ${r.member.name}(으)로 참여했어요` + (r.merged ? ` · ${r.merged}개 가져옴` : ''));
+          App.toast(r.moved
+            ? `${r.member.emoji} ${r.member.name} · 이 기기로 옮겨왔어요`
+            : `${r.member.emoji} ${r.member.name}(으)로 참여했어요` + (r.merged ? ` · ${r.merged}개 가져옴` : ''));
           if(window.ModSound) ModSound.play('complete');
           App.render();
         }catch(e){
