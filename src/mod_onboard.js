@@ -511,13 +511,18 @@ window.ModOnboard = {
 
   _finish(draft, useDemo){
     if(draft && draft.role){
-      App.state.role = draft.role;
       const m1 = App.state.members.find(m => m.id === 'm1');
       const m2 = App.state.members.find(m => m.id === 'm2');
-      if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; }
+      if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; m1.role='child'; }
       if(m2){ m2.name = draft.parent.name || '부모'; m2.emoji = draft.parent.emoji || '🌷'; }
-      const me = App.state.role === 'master' ? m2 : m1;
-      if(me) App.state.me = { name: me.name, emoji: me.emoji, role: App.state.role };
+      /* 이 기기를 처음 켠 사람이 그룹의 마스터가 된다.
+         아이가 먼저 켰다면 아이가 마스터다 — 나중에 부모에게 위임할 수 있다. */
+      const meIsParent = draft.role === 'master';
+      App.state.meId = meIsParent ? 'm2' : 'm1';
+      App.state.members.forEach(m => { m.role = (m.id==='m2' ? 'parent' : 'child'); });
+      const me = App.state.members.find(m => m.id === App.state.meId);
+      if(me) me.role = 'master';
+      App.migrate();
     }
     this._footAction = null;
     if(useDemo && App.applyDemo) App.applyDemo();

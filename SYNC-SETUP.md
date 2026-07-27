@@ -51,6 +51,12 @@ push → Actions 가 주입·배포   →     코드 공유 → 상대가 코드
         ".read":  "auth != null",
         ".write": "auth != null"
       }
+    },
+    "invites": {
+      "$token": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

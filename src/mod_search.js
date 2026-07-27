@@ -232,7 +232,7 @@ window.ModSearch = {
   /* ---------- 매칭 ---------- */
   _collectMatches(q){
     const ql = q.toLowerCase();
-    const memberIds = App.isMaster() ? App.state.members.map(m => m.id) : ['m1'];
+    const memberIds = App.canSwitchMember() ? App.state.members.map(m => m.id) : [App.meId()];
     const schedRows = [], todoRows = [], supplyRows = [];
 
     memberIds.forEach(mid => {
@@ -250,7 +250,7 @@ window.ModSearch = {
         });
       }
       App.state.todos.forEach(t => {
-        const forId = t.for || 'm1';
+        const forId = t.for || App.defaultTodoOwner();
         if(forId !== mid) return;
         if(!App.canSee(t)) return;
         if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member });

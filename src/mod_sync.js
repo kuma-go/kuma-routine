@@ -57,6 +57,45 @@ window.ModSync = {
       color:var(--ink2); line-height:1.95; }
     .sy-steps b{ color:var(--ink); }
     .sy-note{ font-size:11.5px; font-weight:700; color:var(--muted); line-height:1.6; margin-top:14px; }
+    .sy-meline{ display:flex; align-items:center; gap:12px; padding:13px 15px; border-radius:var(--r-m);
+      background:var(--indigo-s); margin-bottom:12px; }
+    .sy-meav{ width:40px; height:40px; border-radius:50%; background:#fff;
+      display:flex; align-items:center; justify-content:center; font-size:21px; flex:0 0 auto; }
+    .sy-metx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .sy-metx b{ font-size:14.5px; font-weight:800; color:var(--indigo); }
+    .sy-metx small{ font-size:11.5px; font-weight:700; color:var(--ink2); }
+
+    .iv-list{ display:flex; flex-direction:column; gap:8px; }
+    .iv-opt{ display:flex; align-items:center; gap:11px; width:100%; padding:12px 14px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      text-align:left; cursor:pointer; transition:.18s cubic-bezier(.22,1,.36,1); }
+    .iv-opt.on{ border-color:var(--indigo); background:var(--indigo-s); }
+    .iv-av{ width:36px; height:36px; border-radius:50%; background:var(--bg);
+      display:flex; align-items:center; justify-content:center; font-size:19px; flex:0 0 auto; }
+    .iv-tx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .iv-tx b{ font-size:14px; font-weight:800; color:var(--ink); }
+    .iv-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); }
+    .iv-opt.on .iv-tx b{ color:var(--indigo); }
+    .iv-go{ margin-left:auto; font-size:12px; font-weight:800; color:var(--indigo); flex:0 0 auto; }
+
+    .iv-role{ display:flex; gap:8px; }
+    .iv-rb{ flex:1; padding:11px 0; border-radius:var(--r-s); border:1.6px solid var(--line);
+      background:transparent; font-size:13px; font-weight:800; color:var(--muted); cursor:pointer;
+      transition:.18s cubic-bezier(.22,1,.36,1); }
+    .iv-rb.on{ border-color:var(--indigo); background:var(--indigo-s); color:var(--indigo); }
+
+    .iv-card{ text-align:center; padding:6px 0 16px; }
+    .iv-card-av{ width:76px; height:76px; margin:0 auto 10px; border-radius:50%;
+      background:var(--indigo-s); display:flex; align-items:center; justify-content:center; font-size:38px; }
+    .iv-card-nm{ font-size:20px; font-weight:800; color:var(--ink); }
+    .iv-card-rl{ font-size:12.5px; font-weight:700; color:var(--muted); margin-top:3px; }
+
+    #phone.th-dark .iv-opt, #phone.th-dark .iv-rb{ border-color:#33333F; }
+    #phone.th-dark .iv-opt.on, #phone.th-dark .iv-rb.on{
+      border-color:#7A6EEA; background:rgba(122,110,234,.16); }
+    #phone.th-dark .iv-opt.on .iv-tx b, #phone.th-dark .iv-rb.on{ color:#B7AEFF; }
+    #phone.th-dark .sy-meav{ background:#2A2A36; }
+
     .sy-rules{
       background:var(--bg); border-radius:var(--r-s); padding:11px 12px; margin-top:9px;
       font-family:'SFMono-Regular',Menlo,Consolas,monospace; font-size:10.5px; line-height:1.6;
@@ -166,10 +205,20 @@ window.ModSync = {
   async createGroup(){
     await this._auth();
     const code = this.newCode();
+
+    /* 그룹을 만든 사람이 마스터다. 이 기기의 주인에게 uid 를 묶고,
+       나머지 프로필은 "아직 아무 기기도 쓰지 않는 상태"로 둔다. */
+    const meId = App.meId();
+    App.state.members.forEach(m => {
+      m.uid = (m.id === meId) ? this._uid : null;
+      m.role = (m.id === meId) ? 'master' : (m.role === 'master' ? 'parent' : (m.role || 'child'));
+    });
+    App.migrate();
+
     const body = {
       createdAt: Date.now(),
       owner: this._uid,
-      members: { [this._uid]: { name: (App.member(App.meId())||{}).name || '나', at: Date.now() } },
+      devices: { [this._uid]: { member: meId, at: Date.now() } },
       rev: 1,
       by: this._uid,
       state: this._snapshot()
@@ -186,36 +235,123 @@ window.ModSync = {
     return code;
   },
 
-  async joinGroup(rawCode){
-    const code = String(rawCode||'').trim().toUpperCase().replace(/\s/g,'');
-    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) throw new Error('코드 형식이 올바르지 않아요');
+  /* ---------- 지정 초대 ----------
+     "누구로 들어올지"를 초대장에 적어서 발급한다.
+     받는 사람은 역할을 고를 수 없다 — 아이가 부모로 들어오는 일을 막는다. */
+  async createInvite(memberId){
+    if(!this.enabled()) throw new Error('먼저 가족 그룹을 만들어 주세요');
+    if(!App.can('invite')) throw new Error('초대할 권한이 없어요');
+    const m = App.member(memberId);
+    if(!m) throw new Error('그 프로필을 찾지 못했어요');
+    if(m.role === 'master') throw new Error('마스터는 초대로 넘길 수 없어요');
     await this._auth();
+    /* 방금 만든 프로필이 아직 안 올라갔을 수 있다.
+       초대장을 먼저 뿌리면 받는 쪽이 "그런 사람 없다"를 보게 된다. */
+    clearTimeout(this._pushTimer);
+    await this.push();
+    const token = this.newCode();
+    const r = await fetch(this._url('/invites/' + token), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        group: App.state.sync.group, member: memberId,
+        name: m.name, emoji: m.emoji, role: m.role,
+        by: this._uid, at: Date.now()
+      })
+    });
+    if(!r.ok) throw new Error(await this._errText(r));
+    return token;
+  },
+
+  /* 초대장을 열어보기만 한다 — 확인 화면에 보여줄 정보 */
+  async peekInvite(rawToken){
+    const token = String(rawToken||'').trim().toUpperCase().replace(/\s/g,'');
+    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(token)) throw new Error('코드 형식이 올바르지 않아요');
+    await this._auth();
+    const r = await fetch(this._url('/invites/' + token));
+    if(!r.ok) throw new Error(await this._errText(r));
+    const inv = await r.json();
+    if(!inv) throw new Error('그 초대 코드를 찾지 못했어요');
+    if(inv.usedBy && inv.usedBy !== this._uid) throw new Error('이미 사용된 초대 코드예요');
+    return Object.assign({token}, inv);
+  },
+
+  /* 초대장대로 참여한다.
+     bundle 을 넘기면 이 기기에 있던 일정을 내 프로필 밑으로 옮겨 붙인다. */
+  async acceptInvite(inv, bundle){
+    await this._auth();
+    const code = inv.group;
     const r = await fetch(this._url('/groups/' + code));
     if(!r.ok) throw new Error(await this._errText(r));
     const g = await r.json();
-    if(!g) throw new Error('그 코드의 그룹을 찾지 못했어요');
+    if(!g) throw new Error('그룹을 찾지 못했어요');
 
-    await fetch(this._url('/groups/' + code + '/members/' + this._uid), {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name:(App.member(App.meId())||{}).name || '나', at: Date.now() })
-    });
+    /* 그룹 상태를 받되, "내가 누구인지"는 초대장이 정한다 */
+    if(g.state) this._applyRemote(g.state, {keepMe:false});
+    const mine = App.state.members.find(m => m.id === inv.member);
+    if(!mine) throw new Error('초대된 프로필이 그룹에서 사라졌어요');
+    if(mine.uid && mine.uid !== this._uid) throw new Error('그 프로필은 이미 다른 기기가 쓰고 있어요');
 
+    mine.uid = this._uid;
+    App.state.meId = mine.id;
     App.state.sync.group = code;
     App.state.sync.on = true;
     App.state.inviteCode = code;
-    if(g.state) this._applyRemote(g.state);
+    App.viewMember = null;
+    App.migrate();
+
+    let merged = 0;
+    if(bundle && bundle.count) merged = App.mergeBundleInto(bundle, mine.id);
+
+    await fetch(this._url('/groups/' + code + '/devices/' + this._uid), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ member: mine.id, at: Date.now() })
+    });
+    await fetch(this._url('/invites/' + inv.token), {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ usedBy: this._uid, usedAt: Date.now() })
+    });
+
     App.save();
     this.connect();
-    return { code, members: Object.keys(g.members||{}).length };
+    await this.push();                       // 내 uid 바인딩과 합친 데이터를 곧바로 올린다
+    return { code, member: mine, merged };
+  },
+
+  /* 공용 코드로 들어오는 예전 방식 — 초대 코드로 먼저 해석해 보고, 아니면 그룹 코드로 본다 */
+  async joinGroup(rawCode, bundle){
+    const code = String(rawCode||'').trim().toUpperCase().replace(/\s/g,'');
+    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) throw new Error('코드 형식이 올바르지 않아요');
+    let inv = null;
+    try{ inv = await this.peekInvite(code); }catch(e){ /* 그룹 코드일 수 있다 */ }
+    if(inv) return this.acceptInvite(inv, bundle);
+    throw new Error('초대 코드를 찾지 못했어요 · 가족에게 새로 발급받아 주세요');
   },
 
   leaveGroup(){
     this.disconnect();
+    const me = App.member(App.meId());
+    if(me && me.uid === this._uid) me.uid = null;   // 이 기기의 바인딩만 푼다
     App.state.sync.group = null;
     App.state.sync.on = false;
     App.save();
     this._setStatus('off','');
     App.render();
+  },
+
+  /* 마스터 위임 — 한 번에 두 사람을 바꿔야 마스터가 둘이 되지 않는다 */
+  transferMaster(toId){
+    if(!App.isMaster()) throw new Error('마스터만 넘길 수 있어요');
+    const to = App.member(toId);
+    if(!to || to.id === App.meId()) throw new Error('넘길 사람을 골라 주세요');
+    if(to.role === 'child') throw new Error('아이에게는 넘길 수 없어요');
+    App.state.members.forEach(m => {
+      if(m.role === 'master') m.role = 'parent';
+    });
+    to.role = 'master';
+    App.migrate();
+    App.save();
+    App.render();
+    return to;
   },
 
   async _errText(r){
@@ -233,10 +369,15 @@ window.ModSync = {
     };
   },
 
-  _applyRemote(st){
+  /* 그룹의 내용을 받아 덮되, "이 기기가 누구인지"는 절대 덮지 않는다.
+     meId 는 동기화 대상이 아니다 — 기기마다 다른 사람이기 때문. */
+  _applyRemote(st, opt){
     if(!st) return;
+    const keepMe = !opt || opt.keepMe !== false;
     this._pullingSelf = true;
     const s = App.state;
+    const prevMe = s.meId;
+
     if(st.members) s.members = st.members;
     if(st.schedules) s.schedules = st.schedules;
     if(st.todos) s.todos = st.todos;
@@ -244,6 +385,15 @@ window.ModSync = {
     if(typeof st.coins === 'number') s.coins = st.coins;
     if(st.doneEv) s.doneEv = st.doneEv;
     if(st.badges) s.badges = st.badges;
+
+    if(keepMe){
+      /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */
+      const byUid = (s.members||[]).find(m => m.uid && m.uid === this._uid);
+      if(byUid) s.meId = byUid.id;
+      else if((s.members||[]).some(m => m.id === prevMe)) s.meId = prevMe;
+      /* 둘 다 아니면 migrate 가 첫 멤버로 떨어뜨린다 */
+    }
+    App.migrate();
     try{ localStorage.setItem('haruk', JSON.stringify(s)); }catch(e){}
     this._pullingSelf = false;
   },
@@ -371,29 +521,35 @@ window.ModSync = {
     const body = this.configured()
       ? `${this.stateHtml()}
          ${inGroup ? `
-           <div class="field">
-             <label>우리 가족 초대 코드</label>
-             <div class="sy-code">${esc(s.group)}</div>
-             <button class="btn full" id="syCopy">초대 코드 복사하기</button>
+           <div class="sy-meline">
+             <span class="sy-meav">${esc((App.me()||{}).emoji||'🙂')}</span>
+             <span class="sy-metx">
+               <b>${esc((App.me()||{}).name||'나')}</b>
+               <small>이 기기는 ${esc(ROLE_LABEL[(App.me()||{}).role]||'아이')}로 연결돼 있어요</small>
+             </span>
            </div>
+           <div class="sy-members">
+             ${(App.state.members||[]).map(m=>`<span class="sy-mem ${m.uid?'':'off'}">
+               <i></i>${esc(m.emoji)} ${esc(m.name)}
+               <em style="font-style:normal;opacity:.62">${m.uid?'':'· 기기 없음'}</em></span>`).join('')}
+           </div>
+           ${App.can('invite') ? `<button class="btn full" id="syInvite" style="margin-top:16px">가족 초대하기</button>` : ''}
            <p class="sy-note">
-             같이 쓸 사람에게 이 코드를 알려주고, 상대방 앱에서
-             <b>가족 그룹 → 코드로 참여하기</b> 에 입력하면 됩니다.<br>
-             한쪽에서 일정을 바꾸면 다른 기기에 바로 반영돼요.
+             초대는 <b>누구로 들어올지 정해서</b> 발급합니다.
+             받는 사람은 역할을 고를 수 없어서, 아이가 부모로 들어오는 일이 없어요.
            </p>
-           <button class="btn line full" id="syLeave" style="margin-top:18px">그룹에서 나가기</button>
+           <button class="btn line full" id="syLeave" style="margin-top:18px">이 기기 연결 끊기</button>
          ` : `
            <button class="btn full" id="syCreate" style="margin-bottom:12px">새 가족 그룹 만들기</button>
            <div class="field" style="margin-top:18px">
-             <label>이미 있는 그룹에 들어가기</label>
+             <label>받은 초대 코드로 참여하기</label>
              <input class="inp" id="syCode" placeholder="ABCD-1234" maxlength="9"
                style="text-align:center;letter-spacing:.14em;font-family:'SFMono-Regular',Menlo,monospace;text-transform:uppercase">
            </div>
-           <button class="btn line full" id="syJoin">코드로 참여하기</button>
+           <button class="btn line full" id="syJoin">초대 코드로 참여하기</button>
            <p class="sy-note">
-             그룹을 만들면 이 기기의 일정이 그대로 올라가고,
-             참여하면 <b>그룹의 내용을 받아옵니다.</b><br>
-             한쪽에서 일정을 바꾸면 다른 기기에 바로 반영돼요.
+             그룹을 만든 사람이 <b>마스터</b>가 되고, 권한을 정합니다.
+             참여할 때는 초대장에 적힌 프로필로 들어가요.
            </p>
          `}
          ${this.builtIn() || !this.devMode() ? '' : `<button class="btn line full" id="syCfgBtn" style="margin-top:22px">서버 설정 바꾸기</button>`}`
@@ -439,6 +595,12 @@ window.ModSync = {
   "rules": {
     "groups": {
       "$code": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "invites": {
+      "$token": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
@@ -517,18 +679,21 @@ window.ModSync = {
         const join = $('#syJoin');
         if(join) join.onclick = async () => {
           const v = $('#syCode').value;
-          join.textContent = '들어가는 중…'; join.disabled = true;
+          join.textContent = '확인하는 중…'; join.disabled = true;
           try{
-            const r = await this.joinGroup(v);
+            const inv = await this.peekInvite(v);
             App.closeSheet();
-            App.toast(`그룹에 들어왔어요 · 가족 ${r.members}명`);
-            if(window.ModSound) ModSound.play('complete');
-            App.render();
-            setTimeout(() => this.open(), 300);
+            setTimeout(() => this.openInvite(inv), 260);
           }catch(e){
-            join.textContent = '코드로 참여하기'; join.disabled = false;
+            join.textContent = '초대 코드로 참여하기'; join.disabled = false;
             App.toast(e.message || '들어가지 못했어요');
           }
+        };
+
+        const invBtn = $('#syInvite');
+        if(invBtn) invBtn.onclick = () => {
+          App.closeSheet();
+          setTimeout(() => this.openInviteIssue(), 240);
         };
 
         const copy = $('#syCopy');
@@ -544,8 +709,160 @@ window.ModSync = {
         if(leave) leave.onclick = () => {
           this.leaveGroup();
           App.closeSheet();
-          App.toast('그룹에서 나왔어요 · 이 기기에서만 사용해요');
+          App.toast('연결을 끊었어요 · 이 기기에서만 사용해요');
         };
       });
+  },
+
+  /* ================= 초대 발급 (마스터·권한자) ================= */
+  openInviteIssue(){
+    if(!App.can('invite')) return App.toast('초대할 권한이 없어요');
+    const open  = App.state.members.filter(m => !m.uid && m.role !== 'master');
+    const taken = App.state.members.filter(m =>  m.uid);
+
+    const body = `
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+        <b>누구로 들어올지</b> 먼저 정해요.<br>
+        받는 사람은 역할을 바꿀 수 없어서 안전합니다.
+      </p>
+      ${open.length ? `
+        <div class="field"><label>기다리고 있는 프로필</label>
+          <div class="iv-list">
+            ${open.map(m => `<button class="iv-opt" data-id="${esc(m.id)}">
+                <span class="iv-av">${esc(m.emoji)}</span>
+                <span class="iv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}</small></span>
+                <span class="iv-go">초대 →</span>
+              </button>`).join('')}
+          </div>
+        </div>` : `
+        <div class="panel" style="padding:14px 15px;margin-bottom:16px">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ink2);line-height:1.6">
+            초대할 수 있는 빈 프로필이 없어요.<br>아래에서 새로 만들어 주세요.
+          </div>
+        </div>`}
+      <div class="field" style="margin-top:6px"><label>새로 만들어 초대하기</label>
+        <input class="inp" id="ivName" placeholder="이름 (예: 아빠, 둘째)" maxlength="12">
+        <div class="iv-role" id="ivRole" style="margin-top:10px">
+          <button class="iv-rb on" data-r="child">🐣 아이</button>
+          <button class="iv-rb" data-r="parent">🌷 부모</button>
+        </div>
+      </div>
+      <button class="btn full" id="ivNew">만들고 초대 코드 받기</button>
+      ${taken.length ? `<p class="sy-note">이미 기기가 연결된 사람 · ${taken.map(m=>esc(m.emoji+' '+m.name)).join(', ')}</p>` : ''}`;
+
+    App.sheet('가족 초대하기', body, `<button class="btn line full" id="ivC">닫기</button>`, (b,f) => {
+      f.querySelector('#ivC').onclick = () => App.closeSheet();
+      let role = 'child';
+      b.querySelectorAll('#ivRole .iv-rb').forEach(r => r.onclick = () => {
+        role = r.dataset.r;
+        b.querySelectorAll('#ivRole .iv-rb').forEach(x => x.classList.toggle('on', x === r));
+      });
+      const issue = async (memberId, btn, label) => {
+        btn.textContent = '발급하는 중…'; btn.disabled = true;
+        try{
+          const token = await this.createInvite(memberId);
+          App.closeSheet();
+          setTimeout(() => this.showInviteCode(token, App.member(memberId)), 260);
+        }catch(e){
+          btn.textContent = label; btn.disabled = false;
+          App.toast(e.message || '발급하지 못했어요');
+        }
+      };
+      b.querySelectorAll('.iv-opt').forEach(o => o.onclick = () => issue(o.dataset.id, o, '초대 →'));
+      b.querySelector('#ivNew').onclick = () => {
+        const name = (b.querySelector('#ivName').value || '').trim();
+        if(!name) return App.toast('이름을 적어 주세요');
+        const m = App.newMember({ name, emoji: role === 'parent' ? '🌷' : '🐣', role });
+        App.save();
+        issue(m.id, b.querySelector('#ivNew'), '만들고 초대 코드 받기');
+      };
+    });
+  },
+
+  showInviteCode(token, member){
+    const url = App.appUrl() + '?invite=' + encodeURIComponent(token);
+    const body = `
+      <div class="iv-card">
+        <div class="iv-card-av">${esc((member||{}).emoji||'🙂')}</div>
+        <div class="iv-card-nm">${esc((member||{}).name||'가족')}</div>
+        <div class="iv-card-rl">${esc(ROLE_LABEL[(member||{}).role]||'아이')}로 참여합니다</div>
+      </div>
+      <div class="sy-code">${esc(token)}</div>
+      <button class="btn full" id="ivCopy">초대 링크 복사하기</button>
+      <p class="sy-note">
+        이 코드는 <b>한 번만</b> 쓸 수 있어요. 링크를 열면 바로 참여 화면이 뜹니다.<br>
+        코드만 알려줘도 되고, 상대가 <b>가족 그룹 → 초대 코드로 참여하기</b> 에 넣으면 됩니다.
+      </p>
+      ${window.ModQR ? `<div id="ivQR" style="display:flex;justify-content:center;margin-top:16px"></div>` : ''}`;
+    App.sheet('초대 코드가 나왔어요', body, `<button class="btn line full" id="ivkC">닫기</button>`, (b,f) => {
+      f.querySelector('#ivkC').onclick = () => App.closeSheet();
+      b.querySelector('#ivCopy').onclick = () => {
+        const txt = `KUMA routine 가족 초대\n${(member||{}).name||''} 님으로 참여해 주세요\n${url}`;
+        if(navigator.clipboard && navigator.clipboard.writeText)
+          navigator.clipboard.writeText(txt).then(() => App.toast('초대 링크를 복사했어요'))
+            .catch(() => App.toast('복사에 실패했어요'));
+        else App.toast('복사에 실패했어요');
+      };
+      const q = b.querySelector('#ivQR');
+      if(q && window.ModQR && ModQR.render) { try{ ModQR.render(q, url, 168); }catch(e){} }
+    });
+  },
+
+  /* ================= 초대 받기 ================= */
+  async openInvite(invOrToken){
+    let inv = invOrToken;
+    try{
+      if(typeof inv === 'string') inv = await this.peekInvite(inv);
+    }catch(e){ return App.toast(e.message || '초대를 확인하지 못했어요'); }
+
+    const bundle = App.hasAnyData() ? App.localBundle() : null;
+    const body = `
+      <div class="iv-card">
+        <div class="iv-card-av">${esc(inv.emoji||'🙂')}</div>
+        <div class="iv-card-nm">${esc(inv.name||'가족')}</div>
+        <div class="iv-card-rl">${esc(ROLE_LABEL[inv.role]||'아이')}로 참여해요</div>
+      </div>
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7;text-align:center">
+        이 기기는 앞으로 <b>${esc(inv.name||'이 사람')}</b>의 기기가 됩니다.<br>
+        가족의 일정이 실시간으로 함께 보여요.
+      </p>
+      ${bundle ? `
+        <div class="field"><label>이 기기에 있던 일정 ${bundle.count}개</label>
+          <div class="iv-list">
+            <button class="iv-opt iv-pick on" data-k="keep">
+              <span class="iv-av">📦</span>
+              <span class="iv-tx"><b>가져올래요</b><small>내 프로필 밑으로 옮겨서 함께 봐요</small></span>
+            </button>
+            <button class="iv-opt iv-pick" data-k="drop">
+              <span class="iv-av">✨</span>
+              <span class="iv-tx"><b>새로 시작할래요</b><small>가족의 일정만 받아옵니다</small></span>
+            </button>
+          </div>
+        </div>` : ''}`;
+
+    App.sheet('가족 초대를 받았어요', body,
+      `<button class="btn line" id="ivnLater" style="flex:0 0 96px">나중에</button>
+       <button class="btn full" id="ivnGo">참여하기</button>`, (b,f) => {
+      let keep = true;
+      b.querySelectorAll('.iv-pick').forEach(p => p.onclick = () => {
+        keep = p.dataset.k === 'keep';
+        b.querySelectorAll('.iv-pick').forEach(x => x.classList.toggle('on', x === p));
+      });
+      f.querySelector('#ivnLater').onclick = () => App.closeSheet();
+      const go = f.querySelector('#ivnGo');
+      go.onclick = async () => {
+        go.textContent = '참여하는 중…'; go.disabled = true;
+        try{
+          const r = await this.acceptInvite(inv, keep ? bundle : null);
+          App.closeSheet();
+          App.toast(`${r.member.emoji} ${r.member.name}(으)로 참여했어요` + (r.merged ? ` · ${r.merged}개 가져옴` : ''));
+          if(window.ModSound) ModSound.play('complete');
+          App.render();
+        }catch(e){
+          go.textContent = '참여하기'; go.disabled = false;
+          App.toast(e.message || '참여하지 못했어요');
+        }
+      };
+    });
   }
 };

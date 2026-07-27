@@ -173,41 +173,25 @@ App.checkInvite=function(){
   if(!code)return;
   try{ history.replaceState(null,'',location.pathname); }catch(e){}
   setTimeout(()=>{
-    this.sheet('가족 초대를 받았어요',`
-      <div style="text-align:center;padding:6px 0 18px">
-        <div style="font-size:44px">👨‍👩‍👧</div>
-        <div style="font-size:13px;font-weight:800;color:var(--muted);margin-top:10px">초대 코드</div>
-        <div style="font-size:24px;font-weight:800;letter-spacing:.12em;font-family:'SFMono-Regular',Menlo,monospace">${esc(code)}</div>
-      </div>
-      <p style="margin:0 0 14px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
-        아래에서 <b>코드로 참여하기</b> 를 누르면 가족 일정을 함께 보게 돼요.
-        한쪽에서 일정을 바꾸면 다른 기기에 바로 반영됩니다.
-      </p>`,
-      `<button class="btn line" id="ivLater" style="flex:0 0 96px">나중에</button>
-       <button class="btn full" id="ivGo">코드로 참여하기</button>`,
-      (b,f)=>{
-        f.querySelector('#ivLater').onclick=()=>this.closeSheet();
-        f.querySelector('#ivGo').onclick=()=>{
-          this.closeSheet();
-          setTimeout(()=>{
-            if(window.ModSync){
-              ModSync.open();
-              setTimeout(()=>{const i=document.querySelector('#syCode');if(i){i.value=code;i.focus()}},420);
-            } else this.shareSheet();
-          },260);
-        };
-      });
+    if(!window.ModSync || !ModSync.configured()){
+      this.toast('이 앱에는 아직 동기화 서버가 연결되지 않았어요');
+      return;
+    }
+    /* 초대장을 먼저 열어보고, 누구로 들어오는지 보여준 뒤 확인받는다 */
+    ModSync.openInvite(code);
   },900);
 };
 
-/* ---------- PARENT MODE PIN GATE ---------- */
-App.toMaster=function(after){
-  if(this.state.pinOff){ this._setRole('master'); after&&after(); return; }
+/* ---------- PIN 게이트 ----------
+   어른 프로필로 넘어가거나 권한을 손대기 전에 한 번 막는다. */
+App.pinSheet=function(onPass,opts){
+  opts=opts||{};
+  if(this.state.pinOff){ onPass&&onPass(); return; }
   const pin=this.state.pin||'1234';
-  this.sheet('부모 모드로 전환',`
+  this.sheet(opts.title||'어른 확인',`
     <p style="margin:0 0 4px;font-size:13.5px;color:var(--ink2);font-weight:600;line-height:1.6">
-      보상과 할 일을 정하는 건 부모님만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.</p>
-    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${pin} 이에요</p>
+      ${opts.desc||'보상과 할 일을 정하는 건 어른만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.'}</p>
+    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${esc(pin)} 이에요</p>
     <div class="pinrow" id="pinDots">${[0,1,2,3].map(i=>`<i data-i="${i}"></i>`).join('')}</div>
     <div class="pinpad" id="pinPad">
       ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-k="${n}">${n}</button>`).join('')}
@@ -220,23 +204,76 @@ App.toMaster=function(after){
     const paint=()=>dots.forEach((d,i)=>d.classList.toggle('on',i<buf.length));
     b.querySelectorAll('#pinPad button').forEach(k=>k.onclick=()=>{
       const v=k.dataset.k;
-      if(v==='off'){ this.state.pinOff=true; this.save(); this.closeSheet(); this._setRole('master'); after&&after(); return; }
+      if(v==='off'){ this.state.pinOff=true; this.save(); this.closeSheet(); onPass&&onPass(); return; }
       if(v==='del'){ buf=buf.slice(0,-1); paint(); return; }
       if(buf.length>=4)return;
       buf+=v; paint(); this.haptic();
       if(buf.length===4){
         setTimeout(()=>{
-          if(buf===pin){ this.closeSheet(); this._setRole('master'); this.toast('🌷 부모 모드로 전환했어요'); after&&after(); }
+          if(buf===pin){ this.closeSheet(); onPass&&onPass(); }
           else { buf=''; paint(); const p=b.querySelector('#pinDots'); p.classList.add('shake'); setTimeout(()=>p.classList.remove('shake'),420); this.toast('PIN이 맞지 않아요'); }
         },160);
       }
     });
   });
 };
-App.toChild=function(){ this._setRole('child'); this.toast('🐣 아이 모드로 전환했어요'); };
-App._setRole=function(r){
-  this.state.role=r; this.viewMember='m1'; this.openCard=null; this._scrolled=false;
+/* 예전 이름 — 어른 프로필로 기기 주인을 바꾼다 */
+App.toMaster=function(after){
+  const adult=(this.state.members||[]).find(m=>m.role==='master')
+           || (this.state.members||[]).find(m=>m.role==='parent');
+  if(!adult){ this.toast('어른 프로필이 없어요'); return; }
+  this.pinSheet(()=>{
+    this.setMe(adult.id);
+    this.toast(adult.emoji+' '+adult.name+'(으)로 전환했어요');
+    after&&after();
+  });
+};
+App.toChild=function(){
+  const c=(this.state.members||[]).find(m=>m.role==='child');
+  if(c) this.setMe(c.id);
+  this.toast('🐣 '+((c&&c.name)||'아이')+'로 전환했어요');
+};
+
+/* 이 기기의 주인을 바꾼다.
+   그룹에 연결돼 있으면 이 기기는 초대로 정해진 사람이므로 바꾸지 않는다. */
+App.canSwitchDevice=function(){
+  return !(window.ModSync && ModSync.enabled && ModSync.enabled());
+};
+App.setMe=function(id){
+  if(!(this.state.members||[]).some(m=>m.id===id)) return false;
+  this.state.meId=id; this.viewMember=null; this.openCard=null; this._scrolled=false;
   this.save(); this.render(); this.renderDrawer&&this.renderDrawer();
+  return true;
+};
+/* 기기 주인 고르기 — 어른 프로필로 넘어갈 땐 PIN 을 한 번 묻는다 */
+App.openDeviceOwner=function(){
+  if(!this.canSwitchDevice()){
+    return this.toast('가족 그룹에 연결된 기기예요 · 주인은 바뀌지 않아요');
+  }
+  const cur=this.meId();
+  const body=`
+    <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+      이 기기를 <b>지금 누가 쓰고 있는지</b> 골라 주세요.<br>
+      한 대를 같이 쓰는 가족을 위한 기능이에요.
+    </p>
+    <div class="dv-list">
+      ${this.state.members.map(m=>`
+        <button class="dv-opt ${m.id===cur?'on':''}" data-id="${esc(m.id)}">
+          <span class="dv-av">${esc(m.emoji)}</span>
+          <span class="dv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}</small></span>
+          ${m.id===cur?'<span class="dv-now">지금</span>':''}
+        </button>`).join('')}
+    </div>`;
+  this.sheet('이 기기는 누가 쓰나요?',body,`<button class="btn line full" id="dvC">닫기</button>`,(b,f)=>{
+    f.querySelector('#dvC').onclick=()=>this.closeSheet();
+    b.querySelectorAll('.dv-opt').forEach(o=>o.onclick=()=>{
+      const id=o.dataset.id; if(id===cur) return this.closeSheet();
+      const m=this.member(id);
+      const go=()=>{ this.closeSheet(); this.setMe(id); this.toast(m.emoji+' '+m.name+'(으)로 전환했어요'); };
+      if(m.role==='child') go();
+      else this.pinSheet(go);          // 어른 프로필은 PIN
+    });
+  });
 };
 
 App.renderDrawer=function(){
@@ -247,7 +284,7 @@ App.renderDrawer=function(){
       <div class="brand">KUMA <b>routine</b></div>
       <div class="av">${esc(me.emoji)}</div>
       <div class="nm">${esc(me.name)}</div>
-      <div class="rl">${m?'부모 (마스터) · 설정 권한 있음':'아이 · 우리 가족 루틴'}</div>
+      <div class="rl">${esc(ROLE_LABEL[me.role]||'아이')}${m?' · 권한을 정할 수 있어요':(this.can('editOthers')?' · 가족 일정을 볼 수 있어요':' · 우리 가족 루틴')}</div>
     </div>
     <div class="dr-list">
       <button class="dr-item" data-go="time"><span class="em">🗓</span>오늘 일정</button>
@@ -267,7 +304,7 @@ App.renderDrawer=function(){
       ${window.ModSound?`<button class="dr-item" data-act="sound"><span class="em">🔊</span>소리 설정</button>`:''}
       ${window.ModTheme&&this.state.adFree?`<button class="dr-item" data-act="ads"><span class="em">📺</span>광고 다시 보기</button>`:''}
       <div class="hr"></div>
-      <button class="dr-item" data-act="role"><span class="em">${m?'🐣':'🌷'}</span>${m?'아이 모드로 보기':'부모 모드로 보기'}</button>
+      ${this.canSwitchDevice()?`<button class="dr-item" data-act="owner"><span class="em">🔄</span>이 기기 주인 바꾸기<span class="pill" style="background:var(--bg);color:var(--muted);margin-left:auto">${esc(me.emoji)} ${esc(me.name)}</span></button>`:''}
       <button class="dr-item" data-act="sim"><span class="em">⏱</span>시간 미리보기 ${this.simNow!==null?'<span class="pill" style="background:var(--orange-s);color:var(--orange);margin-left:auto">'+disp(this.simNow)+'</span>':''}</button>
       <div class="hr"></div>
       <button class="dr-item" data-act="tour"><span class="em">✨</span>앱 소개 다시 보기</button>
@@ -279,7 +316,7 @@ App.renderDrawer=function(){
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}
     const a=b.dataset.act;
-    if(a==='role'){this.closeSheet(); m?this.toChild():this.toMaster();}
+    if(a==='owner'){this.closeSheet(); setTimeout(()=>this.openDeviceOwner(),200);}
     if(a==='sim'){this.closeSheet();this.openSim();}
     if(a==='sync'){this.closeSheet();window.ModSync?ModSync.open():this.toast('동기화를 불러올 수 없어요');}
     if(a==='share'){this.closeSheet();this.shareSheet();}
@@ -388,6 +425,25 @@ App.openSim=function(){
     #phone.th-dark .td-day-chip{ border-color:#3A3A48!important; }
     #phone.th-dark .td-day-chip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
     #phone.th-dark .td-day-chip.on .td-day-label{ color:#B7AEFF!important; }
+    /* 기기 주인 고르기 */
+    .dv-list{ display:flex; flex-direction:column; gap:9px; }
+    .dv-opt{ display:flex; align-items:center; gap:12px; width:100%; padding:13px 15px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      text-align:left; cursor:pointer; transition:.18s cubic-bezier(.22,1,.36,1); }
+    .dv-opt.on{ border-color:var(--indigo); background:var(--indigo-s); }
+    .dv-av{ width:38px; height:38px; border-radius:50%; background:var(--bg);
+      display:flex; align-items:center; justify-content:center; font-size:20px; flex:0 0 auto; }
+    .dv-tx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .dv-tx b{ font-size:14.5px; font-weight:800; color:var(--ink); }
+    .dv-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); }
+    .dv-opt.on .dv-tx b{ color:var(--indigo); }
+    .dv-now{ margin-left:auto; font-size:11px; font-weight:800; color:var(--indigo);
+      background:#fff; border-radius:11px; padding:4px 9px; }
+    #phone.th-dark .dv-opt{ border-color:#33333F!important; }
+    #phone.th-dark .dv-opt.on{ border-color:#7A6EEA!important; background:rgba(122,110,234,.16)!important; }
+    #phone.th-dark .dv-opt.on .dv-tx b{ color:#B7AEFF!important; }
+    #phone.th-dark .dv-now{ background:#2A2A36!important; color:#B7AEFF!important; }
+
     #phone.th-dark .pchip{ border-color:#33333F!important; }
     #phone.th-dark .pchip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
     #phone.th-dark .tab.on .tico{ background:rgba(122,110,234,.16)!important; box-shadow:inset 0 0 0 1.7px #7A6EEA!important; }

@@ -624,14 +624,33 @@ const toStr=m=>pad(Math.floor(m/60))+':'+pad(m%60);
 const disp=m=>{let h=Math.floor(m/60),x=h%12;if(x===0)x=12;return x+':'+pad(m%60)};
 const uid=()=>Math.random().toString(36).slice(2,9);
 
+/* ── 역할과 권한 ────────────────────────────────────────────────
+   역할은 사람에 붙는다. 기기에 붙지 않는다.
+   마스터는 그룹에 정확히 한 명이며, 마스터만 권한을 조절할 수 있다.
+   perm 이 null 이면 역할 프리셋을 그대로 따른다. */
+const PERM_KEYS={
+  setCoin:      {t:'코인·보상 걸기',      d:'아이 할 일에 코인을 붙일 수 있어요'},
+  editOthers:   {t:'다른 사람 일정 보기·편집', d:'가족의 일정을 열어보고 고칠 수 있어요'},
+  approveReward:{t:'보상 승인',          d:'아이가 신청한 보상을 확인해 줄 수 있어요'},
+  invite:       {t:'가족 초대하기',       d:'새 가족에게 초대 코드를 발급할 수 있어요'},
+  manageMembers:{t:'프로필·권한 관리',    d:'마스터만 할 수 있어요'}
+};
+const PERM_PRESET={
+  master:{setCoin:1,editOthers:1,approveReward:1,invite:1,manageMembers:1},
+  parent:{setCoin:1,editOthers:1,approveReward:1,invite:1,manageMembers:0},
+  child: {setCoin:0,editOthers:0,approveReward:0,invite:0,manageMembers:0}
+};
+const ROLE_LABEL={master:'마스터',parent:'부모',child:'아이'};
+window.PERM_KEYS=PERM_KEYS; window.PERM_PRESET=PERM_PRESET; window.ROLE_LABEL=ROLE_LABEL;
+
 const SEED={
-  role:'child',
   onboarded:false,
   theme:'light',
-  me:{name:'',emoji:'',role:'child'},
+  /* 이 기기의 주인. 동기화되지 않는다 — 기기마다 다른 사람이기 때문. */
+  meId:'m1',
   members:[
-    {id:'m1',name:'아이',emoji:'🐣',role:'child',color:'#7B96EF'},
-    {id:'m2',name:'부모',emoji:'🌷',role:'master',color:'#EEB6EC'}
+    {id:'m1',name:'아이',emoji:'🐣',role:'child', uid:null,perm:null,color:'#7B96EF'},
+    {id:'m2',name:'부모',emoji:'🌷',role:'master',uid:null,perm:null,color:'#EEB6EC'}
   ],
   inviteCode:'HRK-4821',
   coins:0,
@@ -758,18 +777,94 @@ const App={
   tab:'time',
   openCard:null,
 
-  viewMember:'m1',
+  viewMember:null,
   view:'day',
   packed:{},
   nowMin(){return this.simNow!==null?this.simNow:(new Date().getHours()*60+new Date().getMinutes())},
-  isMaster(){return this.state.role==='master'},
-  meId(){return this.isMaster()?'m2':'m1'},
-  canSee(o){ if(!o.secret) return true; return o.owner===this.meId(); },
-  vm(){ return this.isMaster()?this.viewMember:'m1'; },
+
+  /* ── 신원 ───────────────────────────────────────────────
+     "나"는 기기가 기억한다. 역할에서 파생하지 않는다. */
+  meId(){
+    const s=this.state;
+    if(s.meId && (s.members||[]).some(m=>m.id===s.meId)) return s.meId;
+    return ((s.members||[])[0]||{}).id||'m1';
+  },
+  me(){ return this.member(this.meId()); },
   member(id){ return this.state.members.find(m=>m.id===(id||this.vm()))||this.state.members[0]; },
+  roleOf(id){ const m=this.member(id); return (m&&m.role)||'child'; },
+  masterMember(){ return (this.state.members||[]).find(m=>m.role==='master')||null; },
+  isMaster(){ return this.roleOf(this.meId())==='master'; },
+
+  /* ── 권한 ─────────────────────────────────────────────── */
+  permOf(m){
+    if(typeof m==='string') m=this.member(m);
+    const base=PERM_PRESET[(m&&m.role)||'child']||PERM_PRESET.child;
+    return Object.assign({},base,(m&&m.perm)||{});
+  },
+  can(k){
+    const m=this.me();
+    if(!m) return false;
+    if(m.role==='master') return true;      // 마스터는 항상 전권
+    return !!this.permOf(m)[k];
+  },
+  /* 다른 사람 프로필로 전환해서 볼 수 있는가 */
+  canSwitchMember(){ return this.can('editOthers'); },
+
+  canSee(o){ if(!o.secret) return true; return o.owner===this.meId(); },
+  vm(){
+    if(!this.canSwitchMember()) return this.meId();
+    const v=this.viewMember;
+    return (v&&(this.state.members||[]).some(m=>m.id===v))?v:this.meId();
+  },
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
-  todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||'m1')===k&&t.day===day); },
-  canSetCoin(){ return this.isMaster()&&this.vm()==='m1'; },
+  todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||this.defaultTodoOwner())===k&&t.day===day); },
+  defaultTodoOwner(){ const c=(this.state.members||[]).find(m=>m.role==='child'); return c?c.id:'m1'; },
+  /* 코인은 아이의 할 일에만 걸 수 있고, 걸 권한이 있어야 한다 */
+  canSetCoin(){ return this.can('setCoin')&&this.roleOf(this.vm())==='child'; },
+
+  /* ── 상태 정합성 보정 ───────────────────────────────────
+     예전 저장본(role 토글 방식)에서 올라오는 경우와
+     동기화로 멤버 목록이 바뀐 경우를 모두 여기서 흡수한다. */
+  migrate(){
+    const s=this.state;
+    if(!Array.isArray(s.members)||!s.members.length){
+      s.members=JSON.parse(JSON.stringify(SEED.members));
+    }
+    s.members=s.members.map(m=>Object.assign({role:'child',uid:null,perm:null},m));
+
+    /* 역할 토글 → 멤버 참조 (1회성 이관) */
+    if(!s.meId) s.meId = (s.role==='master') ? 'm2' : 'm1';
+    if(!s.members.some(m=>m.id===s.meId)) s.meId=s.members[0].id;
+    delete s.role; delete s.me;
+
+    /* 마스터는 정확히 한 명 */
+    const masters=s.members.filter(m=>m.role==='master');
+    if(!masters.length){
+      const cand=s.members.find(m=>m.id===s.meId)||s.members[0];
+      cand.role='master';
+    }else if(masters.length>1){
+      masters.slice(1).forEach(m=>{ m.role='parent'; });
+    }
+
+    s.schedules=s.schedules||{};
+    s.members.forEach(m=>{ s.schedules[m.id]=s.schedules[m.id]||{}; });
+    if(this.viewMember&&!s.members.some(m=>m.id===this.viewMember)) this.viewMember=null;
+    return this;
+  },
+
+  /* 새 멤버 만들기 — 마스터는 여기서 만들 수 없다 */
+  newMember({name,emoji,role,color}={}){
+    const s=this.state;
+    let n=1; while(s.members.some(m=>m.id==='m'+n)) n++;
+    const id='m'+n;
+    const palette=['#7B96EF','#EEB6EC','#8FD3A8','#F3C57B','#B4A7F0','#7FC8E8'];
+    const m={id,name:name||'가족',emoji:emoji||'🙂',
+      role:(role==='parent'?'parent':'child'),uid:null,perm:null,
+      color:color||palette[s.members.length%palette.length]};
+    s.members.push(m);
+    s.schedules[id]=s.schedules[id]||{};
+    return m;
+  },
 
   /* 배포된 앱 주소 (file:// 로 열면 GitHub Pages 주소로 폴백) */
   appUrl(){
@@ -813,7 +908,10 @@ const App={
     if(typeof d.coins==='number') this.state.coins=d.coins;
     if(d.inviteCode) this.state.inviteCode=d.inviteCode;
     this.state.onboarded=true;
-    this.viewMember='m1'; this.openCard=null;
+    /* 남의 기기에서 온 묶음이라 uid 바인딩은 의미가 없다 — 끊고 시작한다 */
+    (this.state.members||[]).forEach(m=>{ m.uid=null; });
+    this.viewMember=null; this.openCard=null;
+    this.migrate();
     this.save(); this.render();
   },
 
@@ -821,7 +919,7 @@ const App={
   applyDemo(){
     const d=JSON.parse(JSON.stringify(DEMO));
     if(!this.state.members.some(m=>m.id==='m3'))
-      this.state.members.push({id:'m3',name:'아빠',emoji:'🐻',role:'master',color:'#C9B08A'});
+      this.state.members.push({id:'m3',name:'아빠',emoji:'🐻',role:'parent',uid:null,perm:null,color:'#C9B08A'});
     this.state.schedules=d.schedules;
     this.state.todos=d.todos;
     this.state.coins=120;
@@ -834,8 +932,45 @@ const App={
     return anySched||(this.state.todos||[]).length>0;
   },
 
+  /* 그룹에 합류할 때, 이 기기에 있던 일정·할 일을 내 프로필 밑으로 옮긴다.
+     남의 프로필 데이터까지 끌고 가지 않도록 "내 것"만 추린다. */
+  localBundle(){
+    const s=this.state, out={schedules:{},todos:[]};
+    const mine=new Set([s.meId,...(s.members||[]).map(m=>m.id)]);
+    let nSched=0;
+    Object.keys(s.schedules||{}).forEach(k=>{
+      if(!mine.has(k)) return;
+      Object.keys(s.schedules[k]||{}).forEach(d=>{
+        const list=s.schedules[k][d]||[];
+        if(!list.length) return;
+        (out.schedules[d]=out.schedules[d]||[]).push(...JSON.parse(JSON.stringify(list)));
+        nSched+=list.length;
+      });
+    });
+    out.todos=JSON.parse(JSON.stringify(s.todos||[]));
+    out.count=nSched+out.todos.length;
+    return out;
+  },
+  /* 위에서 추린 묶음을 지정한 멤버 밑으로 붙인다 (기존 그룹 데이터는 지우지 않는다) */
+  mergeBundleInto(bundle,memberId){
+    if(!bundle) return 0;
+    const s=this.state, id=memberId||this.meId();
+    const tag=x=>{ x.id='mg'+Math.random().toString(36).slice(2,9); return x; };
+    let n=0;
+    s.schedules[id]=s.schedules[id]||{};
+    Object.keys(bundle.schedules||{}).forEach(d=>{
+      const dst=(s.schedules[id][d]=s.schedules[id][d]||[]);
+      (bundle.schedules[d]||[]).forEach(ev=>{ ev=tag(ev); ev.owner=id; dst.push(ev); n++; });
+    });
+    (bundle.todos||[]).forEach(t=>{ t=tag(t); t.for=id; t.owner=id; s.todos.push(t); n++; });
+    return n;
+  },
+
   save(){ try{localStorage.setItem('haruk',JSON.stringify(this.state))}catch(e){} },
-  load(){ try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){} },
+  load(){
+    try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){}
+    this.migrate();
+  },
 
   toast(msg){
     const t=document.getElementById('toast');

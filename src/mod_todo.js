@@ -195,7 +195,7 @@ window.ModTodo = {
 
   render(root){
     const day = App.day;
-    const isChildView = App.vm() === 'm1';
+    const isChildView = App.roleOf(App.vm()) === 'child';
     const list = App.todosOf(day);
     const visible = list.filter(t => App.canSee(t));
     const totalCount = visible.length;
@@ -251,7 +251,7 @@ window.ModTodo = {
           </div>
         </div>
       `;
-    } else if(!App.isMaster()){
+    } else if(App.roleOf(App.vm()) === 'child'){
       coinFieldHtml = `
         <div class="field">
           <label>코인 보상</label>
@@ -259,7 +259,7 @@ window.ModTodo = {
         </div>
       `;
     }
-    // 부모가 자기 자신의 할 일을 만들 때(canSetCoin false && isMaster true)는 코인 영역 자체를 렌더하지 않음
+    // 어른이 자기 자신의 할 일을 만들 때(canSetCoin false && vm이 아이가 아닐 때)는 코인 영역 자체를 렌더하지 않음
 
     const body = `
       <div class="field">
@@ -426,7 +426,7 @@ window.ModTodo = {
       `;
     }
     const mine = !!t.secret && App.canSee(t);
-    const parentLocked = !App.isMaster() && t.owner === 'm2';
+    const parentLocked = App.roleOf(t.owner) !== 'child' && t.owner !== App.meId() && !App.can('editOthers');
     return `
       <div class="td-row" data-row="${t.id}" data-locked="${parentLocked ? '1' : '0'}">
         <div class="td-swipe-bg td-swipe-bg-right" aria-hidden="true">

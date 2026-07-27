@@ -130,7 +130,7 @@ window.ModReport = {
     const itemTitleStats = {};
 
     for(let d = 0; d < 7; d++){
-      const todosDay = App.state.todos.filter(t => (t.for || 'm1') === memberId && t.day === d && App.canSee(t));
+      const todosDay = App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t));
       const doneDay = todosDay.filter(t => t.done);
       const coinDay = doneDay.reduce((s, t) => s + (t.coin || 0), 0);
       totalTodos += todosDay.length; doneTodos += doneDay.length;
@@ -354,7 +354,7 @@ window.ModReport = {
   },
 
   _compareHtml(){
-    if(!App.isMaster()) return '';
+    if(!App.can('editOthers')) return '';
     const children = App.state.members.filter(m => m.role === 'child');
     if(children.length < 2) return '';
     const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id)) }));

@@ -1023,7 +1023,7 @@ window.ModReward = {
           </div>
         </div>
 
-        ${App.isMaster() ? parentClaimSectionHTML() : childClaimBannerHTML()}
+        ${App.can('approveReward') ? parentClaimSectionHTML() : childClaimBannerHTML()}
 
         <div class="rw-benefit-card">
           <div class="rw-benefit-badge">${modeBadge}</div>
@@ -1041,7 +1041,7 @@ window.ModReward = {
           ${gameSectionHTML()}
         </div>` : realSectionHTML()}
 
-        ${App.isMaster() ? `
+        ${App.can('approveReward') ? `
         <div class="sec rw-master">
           <div class="sec-h"><h2>보상 관리</h2></div>
           <button class="btn line full" id="rwSettingsBtn">보상 설정하기 ⚙️</button>
@@ -1092,7 +1092,7 @@ window.ModReward = {
         const btn = root.querySelector('#rwRealBtn');
         if (btn) btn.addEventListener('click', receiveReal);
       }
-      if (App.isMaster()) {
+      if (App.can('approveReward')) {
         const sBtn = root.querySelector('#rwSettingsBtn');
         if (sBtn) sBtn.addEventListener('click', openSettingsSheet);
       }
@@ -1100,7 +1100,7 @@ window.ModReward = {
     }
 
     function bindClaimEvents() {
-      if (App.isMaster()) {
+      if (App.can('approveReward')) {
         root.querySelectorAll('[data-claim-done]').forEach(btn => {
           btn.addEventListener('click', () => markClaimed(btn.dataset.claimDone));
         });

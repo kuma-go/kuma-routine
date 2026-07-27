@@ -624,14 +624,33 @@ const toStr=m=>pad(Math.floor(m/60))+':'+pad(m%60);
 const disp=m=>{let h=Math.floor(m/60),x=h%12;if(x===0)x=12;return x+':'+pad(m%60)};
 const uid=()=>Math.random().toString(36).slice(2,9);
 
+/* ── 역할과 권한 ────────────────────────────────────────────────
+   역할은 사람에 붙는다. 기기에 붙지 않는다.
+   마스터는 그룹에 정확히 한 명이며, 마스터만 권한을 조절할 수 있다.
+   perm 이 null 이면 역할 프리셋을 그대로 따른다. */
+const PERM_KEYS={
+  setCoin:      {t:'코인·보상 걸기',      d:'아이 할 일에 코인을 붙일 수 있어요'},
+  editOthers:   {t:'다른 사람 일정 보기·편집', d:'가족의 일정을 열어보고 고칠 수 있어요'},
+  approveReward:{t:'보상 승인',          d:'아이가 신청한 보상을 확인해 줄 수 있어요'},
+  invite:       {t:'가족 초대하기',       d:'새 가족에게 초대 코드를 발급할 수 있어요'},
+  manageMembers:{t:'프로필·권한 관리',    d:'마스터만 할 수 있어요'}
+};
+const PERM_PRESET={
+  master:{setCoin:1,editOthers:1,approveReward:1,invite:1,manageMembers:1},
+  parent:{setCoin:1,editOthers:1,approveReward:1,invite:1,manageMembers:0},
+  child: {setCoin:0,editOthers:0,approveReward:0,invite:0,manageMembers:0}
+};
+const ROLE_LABEL={master:'마스터',parent:'부모',child:'아이'};
+window.PERM_KEYS=PERM_KEYS; window.PERM_PRESET=PERM_PRESET; window.ROLE_LABEL=ROLE_LABEL;
+
 const SEED={
-  role:'child',
   onboarded:false,
   theme:'light',
-  me:{name:'',emoji:'',role:'child'},
+  /* 이 기기의 주인. 동기화되지 않는다 — 기기마다 다른 사람이기 때문. */
+  meId:'m1',
   members:[
-    {id:'m1',name:'아이',emoji:'🐣',role:'child',color:'#7B96EF'},
-    {id:'m2',name:'부모',emoji:'🌷',role:'master',color:'#EEB6EC'}
+    {id:'m1',name:'아이',emoji:'🐣',role:'child', uid:null,perm:null,color:'#7B96EF'},
+    {id:'m2',name:'부모',emoji:'🌷',role:'master',uid:null,perm:null,color:'#EEB6EC'}
   ],
   inviteCode:'HRK-4821',
   coins:0,
@@ -758,18 +777,94 @@ const App={
   tab:'time',
   openCard:null,
 
-  viewMember:'m1',
+  viewMember:null,
   view:'day',
   packed:{},
   nowMin(){return this.simNow!==null?this.simNow:(new Date().getHours()*60+new Date().getMinutes())},
-  isMaster(){return this.state.role==='master'},
-  meId(){return this.isMaster()?'m2':'m1'},
-  canSee(o){ if(!o.secret) return true; return o.owner===this.meId(); },
-  vm(){ return this.isMaster()?this.viewMember:'m1'; },
+
+  /* ── 신원 ───────────────────────────────────────────────
+     "나"는 기기가 기억한다. 역할에서 파생하지 않는다. */
+  meId(){
+    const s=this.state;
+    if(s.meId && (s.members||[]).some(m=>m.id===s.meId)) return s.meId;
+    return ((s.members||[])[0]||{}).id||'m1';
+  },
+  me(){ return this.member(this.meId()); },
   member(id){ return this.state.members.find(m=>m.id===(id||this.vm()))||this.state.members[0]; },
+  roleOf(id){ const m=this.member(id); return (m&&m.role)||'child'; },
+  masterMember(){ return (this.state.members||[]).find(m=>m.role==='master')||null; },
+  isMaster(){ return this.roleOf(this.meId())==='master'; },
+
+  /* ── 권한 ─────────────────────────────────────────────── */
+  permOf(m){
+    if(typeof m==='string') m=this.member(m);
+    const base=PERM_PRESET[(m&&m.role)||'child']||PERM_PRESET.child;
+    return Object.assign({},base,(m&&m.perm)||{});
+  },
+  can(k){
+    const m=this.me();
+    if(!m) return false;
+    if(m.role==='master') return true;      // 마스터는 항상 전권
+    return !!this.permOf(m)[k];
+  },
+  /* 다른 사람 프로필로 전환해서 볼 수 있는가 */
+  canSwitchMember(){ return this.can('editOthers'); },
+
+  canSee(o){ if(!o.secret) return true; return o.owner===this.meId(); },
+  vm(){
+    if(!this.canSwitchMember()) return this.meId();
+    const v=this.viewMember;
+    return (v&&(this.state.members||[]).some(m=>m.id===v))?v:this.meId();
+  },
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
-  todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||'m1')===k&&t.day===day); },
-  canSetCoin(){ return this.isMaster()&&this.vm()==='m1'; },
+  todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||this.defaultTodoOwner())===k&&t.day===day); },
+  defaultTodoOwner(){ const c=(this.state.members||[]).find(m=>m.role==='child'); return c?c.id:'m1'; },
+  /* 코인은 아이의 할 일에만 걸 수 있고, 걸 권한이 있어야 한다 */
+  canSetCoin(){ return this.can('setCoin')&&this.roleOf(this.vm())==='child'; },
+
+  /* ── 상태 정합성 보정 ───────────────────────────────────
+     예전 저장본(role 토글 방식)에서 올라오는 경우와
+     동기화로 멤버 목록이 바뀐 경우를 모두 여기서 흡수한다. */
+  migrate(){
+    const s=this.state;
+    if(!Array.isArray(s.members)||!s.members.length){
+      s.members=JSON.parse(JSON.stringify(SEED.members));
+    }
+    s.members=s.members.map(m=>Object.assign({role:'child',uid:null,perm:null},m));
+
+    /* 역할 토글 → 멤버 참조 (1회성 이관) */
+    if(!s.meId) s.meId = (s.role==='master') ? 'm2' : 'm1';
+    if(!s.members.some(m=>m.id===s.meId)) s.meId=s.members[0].id;
+    delete s.role; delete s.me;
+
+    /* 마스터는 정확히 한 명 */
+    const masters=s.members.filter(m=>m.role==='master');
+    if(!masters.length){
+      const cand=s.members.find(m=>m.id===s.meId)||s.members[0];
+      cand.role='master';
+    }else if(masters.length>1){
+      masters.slice(1).forEach(m=>{ m.role='parent'; });
+    }
+
+    s.schedules=s.schedules||{};
+    s.members.forEach(m=>{ s.schedules[m.id]=s.schedules[m.id]||{}; });
+    if(this.viewMember&&!s.members.some(m=>m.id===this.viewMember)) this.viewMember=null;
+    return this;
+  },
+
+  /* 새 멤버 만들기 — 마스터는 여기서 만들 수 없다 */
+  newMember({name,emoji,role,color}={}){
+    const s=this.state;
+    let n=1; while(s.members.some(m=>m.id==='m'+n)) n++;
+    const id='m'+n;
+    const palette=['#7B96EF','#EEB6EC','#8FD3A8','#F3C57B','#B4A7F0','#7FC8E8'];
+    const m={id,name:name||'가족',emoji:emoji||'🙂',
+      role:(role==='parent'?'parent':'child'),uid:null,perm:null,
+      color:color||palette[s.members.length%palette.length]};
+    s.members.push(m);
+    s.schedules[id]=s.schedules[id]||{};
+    return m;
+  },
 
   /* 배포된 앱 주소 (file:// 로 열면 GitHub Pages 주소로 폴백) */
   appUrl(){
@@ -813,7 +908,10 @@ const App={
     if(typeof d.coins==='number') this.state.coins=d.coins;
     if(d.inviteCode) this.state.inviteCode=d.inviteCode;
     this.state.onboarded=true;
-    this.viewMember='m1'; this.openCard=null;
+    /* 남의 기기에서 온 묶음이라 uid 바인딩은 의미가 없다 — 끊고 시작한다 */
+    (this.state.members||[]).forEach(m=>{ m.uid=null; });
+    this.viewMember=null; this.openCard=null;
+    this.migrate();
     this.save(); this.render();
   },
 
@@ -821,7 +919,7 @@ const App={
   applyDemo(){
     const d=JSON.parse(JSON.stringify(DEMO));
     if(!this.state.members.some(m=>m.id==='m3'))
-      this.state.members.push({id:'m3',name:'아빠',emoji:'🐻',role:'master',color:'#C9B08A'});
+      this.state.members.push({id:'m3',name:'아빠',emoji:'🐻',role:'parent',uid:null,perm:null,color:'#C9B08A'});
     this.state.schedules=d.schedules;
     this.state.todos=d.todos;
     this.state.coins=120;
@@ -834,8 +932,45 @@ const App={
     return anySched||(this.state.todos||[]).length>0;
   },
 
+  /* 그룹에 합류할 때, 이 기기에 있던 일정·할 일을 내 프로필 밑으로 옮긴다.
+     남의 프로필 데이터까지 끌고 가지 않도록 "내 것"만 추린다. */
+  localBundle(){
+    const s=this.state, out={schedules:{},todos:[]};
+    const mine=new Set([s.meId,...(s.members||[]).map(m=>m.id)]);
+    let nSched=0;
+    Object.keys(s.schedules||{}).forEach(k=>{
+      if(!mine.has(k)) return;
+      Object.keys(s.schedules[k]||{}).forEach(d=>{
+        const list=s.schedules[k][d]||[];
+        if(!list.length) return;
+        (out.schedules[d]=out.schedules[d]||[]).push(...JSON.parse(JSON.stringify(list)));
+        nSched+=list.length;
+      });
+    });
+    out.todos=JSON.parse(JSON.stringify(s.todos||[]));
+    out.count=nSched+out.todos.length;
+    return out;
+  },
+  /* 위에서 추린 묶음을 지정한 멤버 밑으로 붙인다 (기존 그룹 데이터는 지우지 않는다) */
+  mergeBundleInto(bundle,memberId){
+    if(!bundle) return 0;
+    const s=this.state, id=memberId||this.meId();
+    const tag=x=>{ x.id='mg'+Math.random().toString(36).slice(2,9); return x; };
+    let n=0;
+    s.schedules[id]=s.schedules[id]||{};
+    Object.keys(bundle.schedules||{}).forEach(d=>{
+      const dst=(s.schedules[id][d]=s.schedules[id][d]||[]);
+      (bundle.schedules[d]||[]).forEach(ev=>{ ev=tag(ev); ev.owner=id; dst.push(ev); n++; });
+    });
+    (bundle.todos||[]).forEach(t=>{ t=tag(t); t.for=id; t.owner=id; s.todos.push(t); n++; });
+    return n;
+  },
+
   save(){ try{localStorage.setItem('haruk',JSON.stringify(this.state))}catch(e){} },
-  load(){ try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){} },
+  load(){
+    try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){}
+    this.migrate();
+  },
 
   toast(msg){
     const t=document.getElementById('toast');
@@ -2294,7 +2429,7 @@ window.ModTodo = {
 
   render(root){
     const day = App.day;
-    const isChildView = App.vm() === 'm1';
+    const isChildView = App.roleOf(App.vm()) === 'child';
     const list = App.todosOf(day);
     const visible = list.filter(t => App.canSee(t));
     const totalCount = visible.length;
@@ -2350,7 +2485,7 @@ window.ModTodo = {
           </div>
         </div>
       `;
-    } else if(!App.isMaster()){
+    } else if(App.roleOf(App.vm()) === 'child'){
       coinFieldHtml = `
         <div class="field">
           <label>코인 보상</label>
@@ -2358,7 +2493,7 @@ window.ModTodo = {
         </div>
       `;
     }
-    // 부모가 자기 자신의 할 일을 만들 때(canSetCoin false && isMaster true)는 코인 영역 자체를 렌더하지 않음
+    // 어른이 자기 자신의 할 일을 만들 때(canSetCoin false && vm이 아이가 아닐 때)는 코인 영역 자체를 렌더하지 않음
 
     const body = `
       <div class="field">
@@ -2525,7 +2660,7 @@ window.ModTodo = {
       `;
     }
     const mine = !!t.secret && App.canSee(t);
-    const parentLocked = !App.isMaster() && t.owner === 'm2';
+    const parentLocked = App.roleOf(t.owner) !== 'child' && t.owner !== App.meId() && !App.can('editOthers');
     return `
       <div class="td-row" data-row="${t.id}" data-locked="${parentLocked ? '1' : '0'}">
         <div class="td-swipe-bg td-swipe-bg-right" aria-hidden="true">
@@ -3935,7 +4070,7 @@ window.ModReward = {
           </div>
         </div>
 
-        ${App.isMaster() ? parentClaimSectionHTML() : childClaimBannerHTML()}
+        ${App.can('approveReward') ? parentClaimSectionHTML() : childClaimBannerHTML()}
 
         <div class="rw-benefit-card">
           <div class="rw-benefit-badge">${modeBadge}</div>
@@ -3953,7 +4088,7 @@ window.ModReward = {
           ${gameSectionHTML()}
         </div>` : realSectionHTML()}
 
-        ${App.isMaster() ? `
+        ${App.can('approveReward') ? `
         <div class="sec rw-master">
           <div class="sec-h"><h2>보상 관리</h2></div>
           <button class="btn line full" id="rwSettingsBtn">보상 설정하기 ⚙️</button>
@@ -4004,7 +4139,7 @@ window.ModReward = {
         const btn = root.querySelector('#rwRealBtn');
         if (btn) btn.addEventListener('click', receiveReal);
       }
-      if (App.isMaster()) {
+      if (App.can('approveReward')) {
         const sBtn = root.querySelector('#rwSettingsBtn');
         if (sBtn) sBtn.addEventListener('click', openSettingsSheet);
       }
@@ -4012,7 +4147,7 @@ window.ModReward = {
     }
 
     function bindClaimEvents() {
-      if (App.isMaster()) {
+      if (App.can('approveReward')) {
         root.querySelectorAll('[data-claim-done]').forEach(btn => {
           btn.addEventListener('click', () => markClaimed(btn.dataset.claimDone));
         });
@@ -4044,31 +4179,36 @@ window.ModReward = {
 
 
 /* ===== mod_family.js ===== */
+/* ================= 가족 · 공유 =================
+   신원/권한 모델 v2 기준.
+   - 역할은 사람에 붙는다 (master / parent / child). 마스터는 그룹에 정확히 한 명.
+   - "프로필 추가"(기기 없는 아이용)와 "가족 초대하기"(기기를 연결)는 서로 다른 일이다.
+   - 권한 조절 · 역할 변경 · 마스터 위임은 마스터(manageMembers)만 할 수 있다.
+   시각 규칙: 선택 표시는 테두리 + 컬러 텍스트, 액션 버튼만 채운다. 위험 액션만 채워진 빨강. */
 window.ModFamily = {
   css: `
     .fm-wrap{ padding:18px 18px 100px; }
     .fm-section{ margin-bottom:20px; }
 
-    /* ---- 역할 전환 스위처 ---- */
-    .fm-role-switch{ margin-bottom:20px; }
-    .fm-role-track{
-      display:grid; grid-template-columns:1fr 1fr; gap:6px; background:var(--indigo-s);
-      border-radius:18px; padding:5px;
+    /* ---- 이 기기의 나 ---- */
+    .fm-me{
+      display:flex; align-items:center; gap:12px; background:var(--paper); border-radius:var(--r-l);
+      box-shadow:var(--sh-1); padding:13px 14px; margin-bottom:20px;
     }
-    .fm-role-opt{
-      display:flex; align-items:center; justify-content:center; gap:6px;
-      height:48px; border-radius:14px; font-size:15px; font-weight:800; color:var(--indigo-d);
-      background:transparent; opacity:.55;
-      transition:background .24s cubic-bezier(.22,1,.36,1), color .24s cubic-bezier(.22,1,.36,1),
-                 opacity .24s cubic-bezier(.22,1,.36,1), transform .15s;
+    .fm-me-av{
+      flex-shrink:0; width:46px; height:46px; border-radius:50%; background:var(--indigo-s);
+      display:flex; align-items:center; justify-content:center; font-size:23px;
     }
-    .fm-role-opt:active{ transform:scale(.97); }
-    .fm-role-opt.on{ background:var(--paper); color:var(--indigo); opacity:1; box-shadow:var(--sh-2); }
-    .fm-role-opt.on[data-role="master"]{ color:var(--orange); }
-    .fm-role-hint{
-      margin-top:10px; text-align:center; font-size:12.5px; font-weight:700; color:var(--ink2);
-      background:var(--bg); border-radius:12px; padding:10px 12px; line-height:1.4;
+    .fm-me-tx{ flex:1; min-width:0; }
+    .fm-me-tx b{ display:block; font-size:15px; font-weight:800; color:var(--ink); }
+    .fm-me-tx small{ display:block; margin-top:2px; font-size:11.5px; font-weight:700; color:var(--muted); }
+    .fm-me-swap{
+      flex-shrink:0; min-height:38px; padding:0 13px; border-radius:12px;
+      border:1.6px solid var(--line); background:transparent;
+      font-size:12px; font-weight:800; color:var(--ink2);
+      transition:transform .15s cubic-bezier(.22,1,.36,1), border-color .18s, color .18s;
     }
+    .fm-me-swap:active{ transform:scale(.95); border-color:var(--indigo); color:var(--indigo); }
 
     /* ---- 가족 멤버 ---- */
     .fm-members{ display:flex; flex-direction:column; gap:10px; }
@@ -4077,7 +4217,8 @@ window.ModFamily = {
       box-shadow:var(--sh-1); padding:12px 14px;
     }
     .fm-member-avatar{
-      flex-shrink:0; width:48px; height:48px; border-radius:16px; border:1.6px solid transparent;
+      position:relative; flex-shrink:0; width:48px; height:48px; border-radius:16px;
+      border:1.6px solid transparent;
       display:flex; align-items:center; justify-content:center; font-size:23px;
       -webkit-appearance:none; appearance:none; padding:0; font-family:inherit; cursor:pointer;
       transition:transform .15s cubic-bezier(.22,1,.36,1), border-color .2s;
@@ -4085,16 +4226,92 @@ window.ModFamily = {
     .fm-member-avatar:active{ transform:scale(.93); }
     .fm-member-avatar.fm-avatar-locked{ cursor:default; }
     .fm-member-avatar.fm-avatar-locked:active{ transform:none; }
+    .fm-crown{
+      position:absolute; top:-9px; left:50%; transform:translateX(-50%) rotate(-14deg);
+      font-size:15px; line-height:1; pointer-events:none;
+      filter:drop-shadow(0 1px 1px rgba(20,20,40,.28));
+    }
     .fm-member-info{ flex:1; min-width:0; }
-    .fm-member-name-row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .fm-member-name-row{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
     .fm-member-name{ font-size:15px; font-weight:800; color:var(--ink); }
-    .fm-role-badge{ font-size:11px; font-weight:800; padding:3px 9px; border-radius:10px; }
-    .fm-role-badge--master{ background:var(--indigo-s); color:var(--indigo-d); }
-    .fm-role-badge--child{ background:var(--orange-s); color:var(--orange); }
+
+    .fm-rb{ font-size:11px; font-weight:800; padding:3px 9px; border-radius:10px; white-space:nowrap; }
+    .fm-rb--master{ background:var(--indigo-s); color:var(--indigo-d); }
+    .fm-rb--parent{ background:var(--bg); color:var(--ink2); }
+    .fm-rb--child{ background:var(--orange-s); color:var(--orange); }
     .fm-me-badge{ font-size:10.5px; font-weight:800; color:#fff; background:var(--ink); padding:3px 8px; border-radius:9px; }
-    .fm-member-perm{ margin-top:5px; font-size:12px; font-weight:600; color:var(--muted); }
+    .fm-nodev{
+      font-size:10.5px; font-weight:800; color:var(--muted);
+      border:1.3px dashed var(--line); padding:2px 8px; border-radius:9px; white-space:nowrap;
+    }
+    .fm-member-perm{ margin-top:5px; font-size:12px; font-weight:600; color:var(--muted); line-height:1.4; }
     .fm-member-week{ margin-top:4px; font-size:11.5px; font-weight:700; color:var(--muted); }
-    .fm-add-btn{ margin-top:10px; }
+    .fm-member-gear{
+      flex-shrink:0; align-self:center; width:38px; height:38px; border-radius:12px;
+      border:1.6px solid var(--line); background:transparent;
+      display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink2);
+      transition:transform .15s cubic-bezier(.22,1,.36,1), border-color .18s;
+    }
+    .fm-member-gear:active{ transform:scale(.92); border-color:var(--indigo); }
+
+    /* ---- 액션 버튼 묶음 ---- */
+    .fm-actions{ display:flex; flex-direction:column; gap:9px; margin-top:12px; }
+    .fm-note{
+      background:var(--paper); border:1px solid var(--line); border-radius:var(--r-m); padding:13px 14px;
+      font-size:12.5px; font-weight:700; color:var(--ink2); line-height:1.6;
+    }
+    .fm-note b{ color:var(--indigo); font-weight:800; }
+    .fm-note.warm b{ color:var(--orange); }
+
+    /* ---- 시트: 사람 고르기 ---- */
+    .fm-pick-list{ display:flex; flex-direction:column; gap:8px; }
+    .fm-pick{
+      display:flex; align-items:center; gap:11px; width:100%; padding:12px 14px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      text-align:left; cursor:pointer; transition:.18s cubic-bezier(.22,1,.36,1);
+    }
+    .fm-pick:active{ transform:scale(.985); }
+    .fm-pick.on{ border-color:var(--indigo); background:var(--indigo-s); }
+    .fm-pick.on .fm-pick-tx b{ color:var(--indigo); }
+    .fm-pick[disabled]{ opacity:.45; pointer-events:none; }
+    .fm-pick-av{
+      width:36px; height:36px; border-radius:50%; background:var(--bg); flex:0 0 auto;
+      display:flex; align-items:center; justify-content:center; font-size:19px;
+    }
+    .fm-pick-tx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .fm-pick-tx b{ font-size:14px; font-weight:800; color:var(--ink); }
+    .fm-pick-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); }
+    .fm-pick-go{ margin-left:auto; font-size:12px; font-weight:800; color:var(--indigo); flex:0 0 auto; }
+
+    /* ---- 시트: 멤버 메뉴 ---- */
+    .fm-menu{ display:flex; flex-direction:column; gap:8px; }
+    .fm-menu button{
+      display:flex; align-items:center; gap:11px; width:100%; min-height:52px; padding:0 14px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      font-size:14px; font-weight:800; color:var(--ink); text-align:left;
+      transition:.16s cubic-bezier(.22,1,.36,1);
+    }
+    .fm-menu button:active{ transform:scale(.985); border-color:var(--indigo); color:var(--indigo); }
+    .fm-menu .fm-menu-em{ font-size:17px; flex:0 0 auto; }
+    .fm-menu small{ display:block; font-size:11px; font-weight:700; color:var(--muted); margin-top:1px; }
+
+    /* ---- 시트: 권한 ---- */
+    .fm-perm-head{
+      display:flex; align-items:center; gap:11px; padding:12px 14px; border-radius:var(--r-m);
+      background:var(--indigo-s); margin-bottom:14px;
+    }
+    .fm-perm-head .fm-pick-av{ background:var(--paper); }
+    .fm-perm-head b{ font-size:14.5px; font-weight:800; color:var(--indigo-d); }
+    .fm-perm-head small{ display:block; font-size:11.5px; font-weight:700; color:var(--ink2); margin-top:1px; }
+    .fm-perm-locked-note{
+      margin:0 0 14px; background:var(--bg); border-radius:var(--r-m); padding:12px 14px;
+      font-size:12.5px; font-weight:700; color:var(--ink2); line-height:1.6;
+    }
+    .fm-perm-locked-note b{ color:var(--indigo); }
+
+    /* ---- 잠긴 토글 ---- */
+    .fm-lock-ico{ font-size:10.5px; margin-left:3px; }
+    .fm-locked{ opacity:.5; cursor:not-allowed; }
 
     /* ---- 아바타/프로필 편집 시트 ---- */
     .fm-avatar-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
@@ -4114,8 +4331,19 @@ window.ModFamily = {
       color:var(--muted); background:var(--paper); padding:0 3px; border-radius:4px; white-space:nowrap;
       max-width:38px; overflow:hidden; text-overflow:ellipsis; box-shadow:var(--sh-1);
     }
+    /* 역할 고르기 세그먼트 — 선택은 테두리 + 컬러 */
+    .fm-role-track{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .fm-role-opt{
+      display:flex; align-items:center; justify-content:center; gap:6px;
+      height:48px; border-radius:14px; font-size:14.5px; font-weight:800;
+      background:transparent; border:1.6px solid var(--line); color:var(--muted);
+      transition:border-color .2s, color .2s, background .2s, transform .15s;
+    }
+    .fm-role-opt:active{ transform:scale(.97); }
+    .fm-role-opt.on{ border-color:var(--indigo); background:var(--indigo-s); color:var(--indigo); }
+    .fm-role-em{ font-size:17px; }
 
-    /* ---- 초대/공유 ---- */
+    /* ---- 초대 / 그룹 코드 ---- */
     .fm-invite-row{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
     .fm-code-box{
       flex:1; min-width:0; height:52px; border-radius:var(--r-m); background:var(--bg);
@@ -4140,7 +4368,7 @@ window.ModFamily = {
     }
     .fm-qr-card svg{ display:block; width:100%; height:100%; }
     .fm-qr-label{ font-size:11.5px; font-weight:700; color:var(--muted); text-align:center; }
-    .fm-qr-label span{ display:block; font-size:10.5px; color:#C6C6D0; margin-top:1px; }
+    .fm-qr-label span{ display:block; font-size:10.5px; color:var(--muted-soft); margin-top:1px; }
     .fm-qr-link{
       max-width:230px; min-height:44px; display:flex; align-items:center; justify-content:center; gap:5px;
       margin:0; padding:6px 10px; background:var(--bg); border:1px solid var(--line);
@@ -4150,10 +4378,6 @@ window.ModFamily = {
     }
     .fm-qr-link:active{ background:var(--indigo-s); border-color:var(--indigo); color:var(--indigo-d); }
     .fm-qr-link .fm-qr-link-ico{ flex-shrink:0; font-size:11px; }
-
-    /* ---- 잠긴 토글 ---- */
-    .fm-lock-ico{ font-size:10.5px; margin-left:3px; }
-    .fm-locked{ opacity:.9; cursor:not-allowed; }
 
     /* ---- 비밀 항목 패널 ---- */
     .fm-secret-panel{ padding:0; overflow:hidden; }
@@ -4253,7 +4477,25 @@ window.ModFamily = {
       letter-spacing:.06em; color:var(--muted);
     }
     .fm-brand b{ color:var(--indigo-d); font-weight:800; }
+
+    /* ---- 다크 모드 ---- */
+    #phone.th-dark .fm-rb--parent{ background:#26262F; color:var(--ink2); }
+    #phone.th-dark .fm-nodev{ border-color:#3A3A48; }
+    #phone.th-dark .fm-me-swap,
+    #phone.th-dark .fm-member-gear,
+    #phone.th-dark .fm-pick,
+    #phone.th-dark .fm-menu button,
+    #phone.th-dark .fm-role-opt{ border-color:#33333F; }
+    #phone.th-dark .fm-pick.on,
+    #phone.th-dark .fm-role-opt.on{ border-color:#7A6EEA; background:rgba(122,110,234,.16); color:#B7AEFF; }
+    #phone.th-dark .fm-pick.on .fm-pick-tx b{ color:#B7AEFF; }
+    #phone.th-dark .fm-perm-head b{ color:#B7AEFF; }
+    #phone.th-dark .fm-note b, #phone.th-dark .fm-perm-locked-note b{ color:#B7AEFF; }
   `,
+
+  init(){
+    this._avatarList();
+  },
 
   render(root){
     if(!App.state.share){
@@ -4264,12 +4506,11 @@ window.ModFamily = {
     }
     this._avatarList();
 
-    const role = App.state.role;
     const secretItems = this._secretItems();
 
     root.innerHTML = `
       <div class="fm-wrap">
-        ${this._roleSwitchHtml(role)}
+        ${this._meHtml()}
         ${this._membersHtml()}
         ${this._inviteHtml()}
         ${this._shareSettingsHtml()}
@@ -4283,12 +4524,792 @@ window.ModFamily = {
     this._bind(root);
   },
 
+  /* ================= 이 기기의 나 ================= */
+
+  _meHtml(){
+    const me = App.me() || {};
+    const roleLabel = this._roleLabel(me.role);
+    const canSwap = typeof App.canSwitchDevice === 'function' ? App.canSwitchDevice() : false;
+    const desc = App.isMaster()
+      ? '우리 가족 마스터예요 · 권한을 정할 수 있어요'
+      : (App.can('editOthers') ? roleLabel + ' · 가족 일정을 함께 볼 수 있어요' : roleLabel + ' · 내 일정과 할 일을 봐요');
+    return `
+      <div class="fm-me">
+        <div class="fm-me-av">${esc(me.emoji || '🙂')}</div>
+        <div class="fm-me-tx">
+          <b>${esc(me.name || '나')}</b>
+          <small>${esc(desc)}</small>
+        </div>
+        ${canSwap ? `<button type="button" class="fm-me-swap" id="fm-swap-owner">바꾸기</button>` : ''}
+      </div>
+    `;
+  },
+
+  /* ================= 가족 구성원 ================= */
+
+  _membersHtml(){
+    const members = App.state.members || [];
+    return `
+      <div class="fm-section">
+        <div class="sec-h"><h2>가족 구성원</h2><span class="sub">${members.length}명</span></div>
+        <div class="fm-members">
+          ${members.map(m => this._memberCardHtml(m)).join('')}
+        </div>
+        ${this._actionsHtml()}
+      </div>
+    `;
+  },
+
+  _memberCardHtml(m){
+    const isMe = m.id === App.meId();
+    const isMaster = m.role === 'master';
+    const canManage = App.can('manageMembers');
+    const canEdit = isMe || canManage;
+    const color = this._cssColor(m.color);
+    const weekCount = this._memberWeekCount(m.id);
+    const roleCls = isMaster ? 'fm-rb--master' : (m.role === 'parent' ? 'fm-rb--parent' : 'fm-rb--child');
+    const permLine = canManage
+      ? `<div class="fm-member-perm">${esc(this._permSummary(m))}</div>`
+      : '';
+    return `
+      <div class="fm-member-card">
+        <button type="button" class="fm-member-avatar ${canEdit ? '' : 'fm-avatar-locked'}" data-edit-member="${esc(m.id)}"
+          style="background:${color}2A;border-color:${color}66;" aria-label="${esc(m.name)} 프로필 편집">
+          <span>${esc(m.emoji || '🙂')}</span>
+          ${isMaster ? '<span class="fm-crown" aria-hidden="true">👑</span>' : ''}
+        </button>
+        <div class="fm-member-info">
+          <div class="fm-member-name-row">
+            <span class="fm-member-name">${esc(m.name)}</span>
+            <span class="fm-rb ${roleCls}">${isMaster ? '👑 ' : ''}${esc(this._roleLabel(m.role))}</span>
+            ${isMe ? '<span class="fm-me-badge">나</span>' : ''}
+            ${this._showNoDevice(m) ? '<span class="fm-nodev">기기 없음</span>' : ''}
+          </div>
+          ${permLine}
+          <div class="fm-member-week">📅 이번 주 일정 ${weekCount}개</div>
+        </div>
+        ${canManage ? `<button type="button" class="fm-member-gear" data-member-menu="${esc(m.id)}" aria-label="${esc(m.name)} 관리">⚙️</button>` : ''}
+      </div>
+    `;
+  },
+
+  _actionsHtml(){
+    const canManage = App.can('manageMembers');
+    const canInvite = App.can('invite');
+    const syncOn = !!(window.ModSync && typeof ModSync.enabled === 'function' && ModSync.enabled());
+    let h = '';
+
+    if(canManage){
+      h += `<button type="button" class="btn line full" id="fm-add-member">+ 프로필 추가</button>`;
+    }
+
+    if(canInvite){
+      if(syncOn){
+        h += `<button type="button" class="btn full" id="fm-invite">💌 가족 초대하기</button>`;
+      } else {
+        h += `<div class="fm-note">먼저 <b>가족 그룹</b>을 만들어 주세요.<br>그룹을 만들면 가족을 초대할 수 있어요.</div>`;
+        h += `<button type="button" class="btn full" id="fm-open-sync">가족 그룹 만들기</button>`;
+      }
+    }
+
+    if(canManage){
+      h += `<button type="button" class="btn line full" id="fm-perm">🔑 권한 정하기</button>`;
+      h += `<button type="button" class="btn line full" id="fm-transfer">👑 마스터 넘기기</button>`;
+    }
+
+    if(!h){
+      h = `<div class="fm-note">가족을 초대하거나 권한을 정하는 건 <b>마스터</b>가 해요.</div>`;
+    }
+    return `<div class="fm-actions">${h}</div>`;
+  },
+
+
+  /* "기기 없음"은 그룹에 연결됐을 때만 뜻이 있다.
+     혼자 쓰는 기기에서는 모두 uid 가 없으니 표시하면 혼란스럽다. */
+  _showNoDevice(m){
+    if(!(window.ModSync && ModSync.enabled && ModSync.enabled())) return false;
+    if(m.id === App.meId()) return false;
+    return !m.uid;
+  },
+  _roleLabel(role){
+    return (window.ROLE_LABEL && ROLE_LABEL[role]) || '아이';
+  },
+
+  _permSummary(m){
+    if(m.role === 'master') return '모든 권한을 가지고 있어요';
+    const p = App.permOf(m);
+    const keys = Object.keys(window.PERM_KEYS || {}).filter(k => k !== 'manageMembers' && p[k]);
+    if(!keys.length) return '내 일정과 할 일만 볼 수 있어요';
+    return keys.map(k => PERM_KEYS[k].t).join(' · ');
+  },
+
+  _memberWeekCount(id){
+    const S = (App.state.schedules && App.state.schedules[id]) || {};
+    let n = 0;
+    for(let i = 0; i < 7; i++){
+      (S[i] || []).forEach(s => { if(App.canSee(s)) n++; });
+    }
+    return n;
+  },
+
+  _avatarList(){
+    if(!App.state.avatars || !App.state.avatars.length){
+      App.state.avatars = [
+        '🐣','🐻','🐰','🦊','🐼','🐨','🦁','🐯','🐸','🐧','🦄','🐙',
+        '🐝','🦋','🌷','🌻','🌸','🍀','⭐️','🌙','☀️','🍎','🍓','🍑',
+        '🎈','🎨','🎸','⚽️','🚀','🎮','📚','🧸','👑','💎','🧁','🍩'
+      ];
+    }
+    return App.state.avatars;
+  },
+
+  _findMember(id){
+    return (App.state.members || []).find(x => x.id === id);
+  },
+
+  /* 색은 스타일 속성에 직접 들어가므로 형식을 검사한다 */
+  _cssColor(c){
+    return /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c) : '#7B96EF';
+  },
+
+  /* ================= 멤버 관리 시트 ================= */
+
+  _openMemberMenu(id){
+    const m = this._findMember(id);
+    if(!m) return App.toast('프로필을 찾을 수 없어요');
+    if(!App.can('manageMembers')) return App.toast('마스터만 할 수 있어요');
+
+    const isMaster = m.role === 'master';
+    const syncOn = !!(window.ModSync && typeof ModSync.enabled === 'function' && ModSync.enabled());
+
+    const body = `
+      <div class="fm-perm-head">
+        <div class="fm-pick-av">${esc(m.emoji || '🙂')}</div>
+        <div><b>${esc(m.name)}</b><small>${esc(this._roleLabel(m.role))}${this._showNoDevice(m) ? ' · 기기 없음' : ''}</small></div>
+      </div>
+      <div class="fm-menu">
+        <button type="button" data-menu="edit"><span class="fm-menu-em">✏️</span>
+          <span>프로필 편집<small>이름 · 아바타 · 색을 바꿔요</small></span></button>
+        <button type="button" data-menu="perm"><span class="fm-menu-em">🔑</span>
+          <span>권한 정하기<small>${isMaster ? '마스터는 항상 전권이에요' : '무엇을 할 수 있는지 정해요'}</small></span></button>
+        ${isMaster ? '' : `<button type="button" data-menu="role"><span class="fm-menu-em">🔁</span>
+          <span>역할 바꾸기<small>부모 또는 아이로 바꿔요</small></span></button>`}
+        ${isMaster ? '' : `<button type="button" data-menu="transfer"><span class="fm-menu-em">👑</span>
+          <span>마스터 넘기기<small>${m.role === 'parent' ? '이 사람을 마스터로 만들어요' : '부모 역할인 가족에게만 넘길 수 있어요'}</small></span></button>`}
+        ${(!m.uid && !isMaster && syncOn && App.can('invite')) ? `<button type="button" data-menu="invite"><span class="fm-menu-em">💌</span>
+          <span>초대 코드 보내기<small>이 프로필로 기기를 연결해요</small></span></button>` : ''}
+      </div>
+    `;
+
+    App.sheet('가족 관리', body, `<button type="button" class="btn line full" id="fmMenuC">닫기</button>`, (b, f) => {
+      f.querySelector('#fmMenuC').addEventListener('click', () => App.closeSheet());
+      b.querySelectorAll('[data-menu]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const a = btn.dataset.menu;
+          if(a === 'edit') this._openMemberEditor(id);
+          else if(a === 'perm') this._openPermFor(id);
+          else if(a === 'role') this._openRoleSheet(id);
+          else if(a === 'transfer') this._openTransferConfirm(id);
+          else if(a === 'invite'){ App.closeSheet(); setTimeout(() => ModSync.openInviteIssue(), 240); }
+        });
+      });
+    });
+  },
+
+  /* ================= 권한 시트 ================= */
+
+  openPermSheet(){
+    if(!App.can('manageMembers')) return App.toast('마스터만 권한을 정할 수 있어요');
+    const members = App.state.members || [];
+    const body = `
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+        권한을 정할 가족을 골라 주세요.<br>
+        <b>마스터</b>는 언제나 모든 걸 할 수 있어요.
+      </p>
+      <div class="fm-pick-list">
+        ${members.map(m => `
+          <button type="button" class="fm-pick" data-perm-id="${esc(m.id)}">
+            <span class="fm-pick-av">${esc(m.emoji || '🙂')}</span>
+            <span class="fm-pick-tx"><b>${esc(m.name)}</b><small>${esc(this._permSummary(m))}</small></span>
+            <span class="fm-pick-go">정하기 →</span>
+          </button>`).join('')}
+      </div>
+    `;
+    App.sheet('권한 정하기', body, `<button type="button" class="btn line full" id="fmPermPickC">닫기</button>`, (b, f) => {
+      f.querySelector('#fmPermPickC').addEventListener('click', () => App.closeSheet());
+      b.querySelectorAll('[data-perm-id]').forEach(btn => {
+        btn.addEventListener('click', () => this._openPermFor(btn.dataset.permId));
+      });
+    });
+  },
+
+  _openPermFor(id){
+    if(!App.can('manageMembers')) return App.toast('마스터만 권한을 정할 수 있어요');
+    const m = this._findMember(id);
+    if(!m) return App.toast('프로필을 찾을 수 없어요');
+
+    const isMaster = m.role === 'master';
+    const cur = App.permOf(m);
+    const keys = Object.keys(window.PERM_KEYS || {});
+
+    const rows = keys.map(k => {
+      const meta = PERM_KEYS[k];
+      const locked = isMaster || k === 'manageMembers';
+      const on = isMaster ? true : !!cur[k];
+      return `
+        <div class="toggle-row">
+          <div>
+            <div class="tl">${esc(meta.t)}${locked ? '<span class="fm-lock-ico">🔒</span>' : ''}</div>
+            <div class="td">${esc(meta.d)}</div>
+          </div>
+          <button type="button" class="sw-tog ${on ? 'on' : ''} ${locked ? 'fm-locked' : ''}"
+            data-perm-key="${esc(k)}" ${locked ? 'data-perm-locked="1"' : ''}
+            aria-pressed="${on ? 'true' : 'false'}"></button>
+        </div>`;
+    }).join('');
+
+    const notice = isMaster
+      ? `<p class="fm-perm-locked-note"><b>마스터는 항상 전권이에요.</b><br>권한을 줄이고 싶다면 먼저 다른 가족에게 마스터를 넘겨 주세요.</p>`
+      : `<p class="fm-perm-locked-note">🔒 표시가 있는 <b>프로필·권한 관리</b>는 마스터만 할 수 있어서 바꿀 수 없어요.</p>`;
+
+    const body = `
+      <div class="fm-perm-head">
+        <div class="fm-pick-av">${esc(m.emoji || '🙂')}</div>
+        <div><b>${esc(m.name)}</b><small>${esc(this._roleLabel(m.role))}${this._showNoDevice(m) ? ' · 기기 없음' : ''}</small></div>
+      </div>
+      ${notice}
+      <div class="panel" style="padding:4px 15px">${rows}</div>
+    `;
+
+    const foot = isMaster
+      ? `<button type="button" class="btn line full" id="fmPermC">닫기</button>`
+      : `<button type="button" class="btn line" id="fmPermC" style="flex:0 0 96px">취소</button>
+         <button type="button" class="btn full" id="fmPermS">저장하기</button>`;
+
+    App.sheet('권한 정하기', body, foot, (b, f) => {
+      const draft = {};
+      keys.forEach(k => { draft[k] = !!cur[k]; });
+
+      b.querySelectorAll('[data-perm-key]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if(btn.dataset.permLocked){
+            App.toast(isMaster ? '마스터는 항상 전권이에요' : '이 권한은 마스터만 가질 수 있어요');
+            return;
+          }
+          const k = btn.dataset.permKey;
+          draft[k] = !draft[k];
+          btn.classList.toggle('on', draft[k]);
+          btn.setAttribute('aria-pressed', draft[k] ? 'true' : 'false');
+          if(App.haptic) App.haptic();
+        });
+      });
+
+      f.querySelector('#fmPermC').addEventListener('click', () => App.closeSheet());
+      const saveBtn = f.querySelector('#fmPermS');
+      if(saveBtn){
+        saveBtn.addEventListener('click', () => {
+          const preset = (window.PERM_PRESET && PERM_PRESET[m.role]) || {};
+          const next = {};
+          keys.forEach(k => {
+            if(k === 'manageMembers') return;                 // 마스터 전용 — 건드리지 않는다
+            if(!!preset[k] !== draft[k]) next[k] = draft[k] ? 1 : 0;
+          });
+          m.perm = Object.keys(next).length ? next : null;
+          App.migrate();
+          App.save();
+          App.render();
+          App.closeSheet();
+          App.toast(`${m.name}님의 권한을 저장했어요`);
+        });
+      }
+    });
+  },
+
+  /* ================= 역할 바꾸기 ================= */
+
+  _openRoleSheet(id){
+    if(!App.can('manageMembers')) return App.toast('마스터만 역할을 바꿀 수 있어요');
+    const m = this._findMember(id);
+    if(!m) return App.toast('프로필을 찾을 수 없어요');
+    if(m.role === 'master') return App.toast('마스터 역할은 넘기기로만 바꿀 수 있어요');
+
+    const body = `
+      <div class="fm-perm-head">
+        <div class="fm-pick-av">${esc(m.emoji || '🙂')}</div>
+        <div><b>${esc(m.name)}</b><small>지금은 ${esc(this._roleLabel(m.role))}예요</small></div>
+      </div>
+      <div class="field">
+        <label>어떤 역할로 바꿀까요?</label>
+        <div class="fm-role-track" id="fmRoleSet">
+          <button type="button" class="fm-role-opt ${m.role === 'parent' ? 'on' : ''}" data-role-pick="parent">
+            <span class="fm-role-em">🌷</span>부모</button>
+          <button type="button" class="fm-role-opt ${m.role === 'child' ? 'on' : ''}" data-role-pick="child">
+            <span class="fm-role-em">🐣</span>아이</button>
+        </div>
+      </div>
+      <div class="fm-note">
+        마스터는 <b>넘기기</b>로만 바꿀 수 있어요.<br>
+        역할을 바꾸면 권한은 그 역할의 기본값으로 돌아가요.
+      </div>
+    `;
+
+    App.sheet('역할 바꾸기', body,
+      `<button type="button" class="btn line" id="fmRoleC" style="flex:0 0 96px">취소</button>
+       <button type="button" class="btn full" id="fmRoleS">바꾸기</button>`, (b, f) => {
+      let pick = m.role === 'parent' ? 'parent' : 'child';
+      b.querySelectorAll('[data-role-pick]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          pick = btn.dataset.rolePick;
+          b.querySelectorAll('[data-role-pick]').forEach(x => x.classList.toggle('on', x === btn));
+          if(App.haptic) App.haptic();
+        });
+      });
+      f.querySelector('#fmRoleC').addEventListener('click', () => App.closeSheet());
+      f.querySelector('#fmRoleS').addEventListener('click', () => {
+        if(pick === m.role){ App.closeSheet(); return; }
+        m.role = pick;
+        m.perm = null;                       // 새 역할의 기본 권한으로
+        App.migrate();
+        App.save();
+        App.render();
+        App.closeSheet();
+        App.toast(`${m.name}님이 ${this._roleLabel(pick)}가 됐어요`);
+      });
+    });
+  },
+
+  /* ================= 마스터 넘기기 ================= */
+
+  openTransferSheet(){
+    if(!App.isMaster()) return App.toast('마스터만 넘길 수 있어요');
+    const meId = App.meId();
+    const cands = (App.state.members || []).filter(m => m.id !== meId && m.role === 'parent');
+
+    const body = `
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+        마스터는 우리 가족에 <b>딱 한 명</b>이에요.<br>
+        넘기면 나는 <b>부모</b>가 되고, 권한 관리는 그 사람이 하게 돼요.
+      </p>
+      ${cands.length ? `
+        <div class="fm-pick-list">
+          ${cands.map(m => `
+            <button type="button" class="fm-pick" data-transfer-id="${esc(m.id)}">
+              <span class="fm-pick-av">${esc(m.emoji || '🙂')}</span>
+              <span class="fm-pick-tx"><b>${esc(m.name)}</b><small>${esc(this._roleLabel(m.role))}${this._showNoDevice(m) ? ' · 기기 없음' : ''}</small></span>
+              <span class="fm-pick-go">넘기기 →</span>
+            </button>`).join('')}
+        </div>` : `
+        <div class="fm-note">
+          넘길 수 있는 가족이 없어요.<br>
+          먼저 가족을 <b>부모</b> 역할로 바꿔 주세요. 아이에게는 넘길 수 없어요.
+        </div>`}
+    `;
+
+    App.sheet('마스터 넘기기', body, `<button type="button" class="btn line full" id="fmTrC">닫기</button>`, (b, f) => {
+      f.querySelector('#fmTrC').addEventListener('click', () => App.closeSheet());
+      b.querySelectorAll('[data-transfer-id]').forEach(btn => {
+        btn.addEventListener('click', () => this._openTransferConfirm(btn.dataset.transferId));
+      });
+    });
+  },
+
+  _openTransferConfirm(id){
+    if(!App.isMaster()) return App.toast('마스터만 넘길 수 있어요');
+    const m = this._findMember(id);
+    if(!m) return App.toast('프로필을 찾을 수 없어요');
+    if(m.role === 'child'){
+      return App.toast('아이에게는 넘길 수 없어요 · 먼저 부모로 바꿔 주세요');
+    }
+    const me = App.me() || {};
+
+    const body = `
+      <div class="fm-perm-head">
+        <div class="fm-pick-av">${esc(m.emoji || '🙂')}</div>
+        <div><b>${esc(m.name)}</b><small>새 마스터가 돼요</small></div>
+      </div>
+      <p style="margin:0 0 4px;font-size:13.5px;font-weight:700;color:var(--ink2);line-height:1.7">
+        정말 <b>${esc(m.name)}</b>님에게 마스터를 넘길까요?
+      </p>
+      <div class="fm-note">
+        넘기고 나면 <b>${esc(me.name || '나')}</b>님은 부모가 돼요.<br>
+        되돌리려면 새 마스터가 다시 넘겨줘야 해요.
+      </div>
+    `;
+
+    App.sheet('마스터를 넘길까요?', body,
+      `<button type="button" class="btn line" id="fmTcC" style="flex:0 0 96px">취소</button>
+       <button type="button" class="btn full" id="fmTcOk">넘기기</button>`, (b, f) => {
+      f.querySelector('#fmTcC').addEventListener('click', () => App.closeSheet());
+      f.querySelector('#fmTcOk').addEventListener('click', () => {
+        if(!window.ModSync || typeof ModSync.transferMaster !== 'function'){
+          App.toast('아직 넘길 수 없어요');
+          return;
+        }
+        try{
+          const to = ModSync.transferMaster(id);
+          App.closeSheet();
+          App.toast(`이제 ${(to && to.name) || m.name}님이 마스터예요`);
+          if(App.haptic) App.haptic();
+        }catch(e){
+          App.toast((e && e.message) || '넘기지 못했어요');
+        }
+      });
+    });
+  },
+
+  /* ================= 프로필 편집 / 추가 ================= */
+
+  _openMemberEditor(id){
+    const isNew = !id;
+    const canManage = App.can('manageMembers');
+    const canEdit = isNew ? canManage : (id === App.meId() || canManage);
+    if(!canEdit){
+      App.toast('본인 프로필만 바꿀 수 있어요');
+      return;
+    }
+
+    const avatars = this._avatarList();
+    const existing = isNew ? null : this._findMember(id);
+    if(!isNew && !existing){
+      App.toast('프로필을 찾을 수 없어요');
+      return;
+    }
+    const mem = isNew
+      ? { name:'', emoji:avatars[0], role:'child', color:PALETTE[3].fill }
+      : existing;
+
+    const usedBy = {};
+    (App.state.members || []).forEach(x => {
+      if(!isNew && x.id === mem.id) return;
+      if(x.emoji) usedBy[x.emoji] = x.name;
+    });
+
+    const body = `
+      ${isNew ? `<div class="fm-note" style="margin-bottom:15px">
+        기기가 없는 아이도 프로필만 먼저 만들 수 있어요.<br>
+        나중에 <b>가족 초대하기</b>로 기기를 연결하면 돼요.
+      </div>` : ''}
+      <div class="field">
+        <label>이름</label>
+        <input class="inp" id="fmName" placeholder="이름을 입력해주세요" maxlength="8" value="${esc(mem.name)}">
+      </div>
+      ${isNew ? `
+      <div class="field">
+        <label>역할</label>
+        <div class="fm-role-track" id="fmRolePick">
+          <button type="button" class="fm-role-opt on" data-role-pick="child"><span class="fm-role-em">🐣</span>아이</button>
+          <button type="button" class="fm-role-opt" data-role-pick="parent"><span class="fm-role-em">🌷</span>부모</button>
+        </div>
+      </div>` : ''}
+      <div class="field">
+        <label>아바타</label>
+        <div class="fm-avatar-grid" id="fmAvatarGrid">
+          ${avatars.map(e => {
+            const dupeName = usedBy[e];
+            const on = e === mem.emoji;
+            return `<button type="button" class="fm-avatar-cell ${on ? 'on' : ''} ${dupeName ? 'dupe' : ''}" data-emoji="${esc(e)}">
+              <span class="fm-avatar-emoji">${esc(e)}</span>
+              ${dupeName ? `<span class="fm-avatar-dupe-label">${esc(dupeName)}</span>` : ''}
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label>프로필 색</label>
+        <div class="swatches" id="fmColorPick">
+          ${PALETTE.map(p => `<button type="button" class="sw ${p.fill === mem.color ? 'on' : ''}" data-color="${esc(p.fill)}" style="background:${this._cssColor(p.fill)}"></button>`).join('')}
+        </div>
+      </div>
+    `;
+
+    const foot = `
+      <button type="button" class="btn line" id="fmCancel" style="flex:0 0 96px">취소</button>
+      <button type="button" class="btn full" id="fmSave">${isNew ? '추가하기' : '저장하기'}</button>
+    `;
+
+    App.sheet(isNew ? '프로필 추가' : '프로필 편집', body, foot, (b, f) => {
+      let pickEmoji = mem.emoji, pickColor = mem.color, pickRole = 'child';
+
+      b.querySelectorAll('#fmAvatarGrid .fm-avatar-cell').forEach(btn => {
+        btn.addEventListener('click', () => {
+          pickEmoji = btn.dataset.emoji;
+          b.querySelectorAll('#fmAvatarGrid .fm-avatar-cell').forEach(x => x.classList.remove('on'));
+          btn.classList.add('on');
+          if(App.haptic) App.haptic();
+        });
+      });
+
+      b.querySelectorAll('#fmColorPick .sw').forEach(btn => {
+        btn.addEventListener('click', () => {
+          pickColor = btn.dataset.color;
+          b.querySelectorAll('#fmColorPick .sw').forEach(x => x.classList.remove('on'));
+          btn.classList.add('on');
+          if(App.haptic) App.haptic();
+        });
+      });
+
+      const roleTrack = b.querySelector('#fmRolePick');
+      if(roleTrack){
+        roleTrack.querySelectorAll('[data-role-pick]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            pickRole = btn.dataset.rolePick;
+            roleTrack.querySelectorAll('[data-role-pick]').forEach(x => x.classList.toggle('on', x === btn));
+            if(App.haptic) App.haptic();
+          });
+        });
+      }
+
+      f.querySelector('#fmCancel').addEventListener('click', () => App.closeSheet());
+      f.querySelector('#fmSave').addEventListener('click', () => {
+        const name = b.querySelector('#fmName').value.trim();
+        if(!name){
+          App.toast('이름을 입력해주세요');
+          b.querySelector('#fmName').focus();
+          return;
+        }
+        if(isNew){
+          const created = App.newMember({ name, emoji:pickEmoji, role:pickRole, color:pickColor });
+          App.migrate();
+          App.save();
+          App.render();
+          App.closeSheet();
+          App.toast(`${created.name} 프로필을 만들었어요`);
+        } else {
+          Object.assign(mem, { name, emoji:pickEmoji, color:pickColor });
+          App.migrate();
+          App.save();
+          App.render();
+          App.closeSheet();
+          App.toast('프로필을 저장했어요');
+        }
+      });
+    });
+  },
+
+  /* ================= 초대 / 그룹 코드 ================= */
+
+  _inviteHtml(){
+    const syncOn = !!(window.ModSync && typeof ModSync.enabled === 'function' && ModSync.enabled());
+    const code = App.state.inviteCode;
+    return `
+      <div class="fm-section">
+        <div class="sec-h">
+          <h2>${syncOn ? '우리 가족 그룹' : '앱 주소'}</h2>
+          <span class="sub">${syncOn ? '연결된 코드예요' : '가족에게 알려주세요'}</span>
+        </div>
+        <div class="panel fm-invite">
+          ${syncOn ? `
+          <div class="fm-invite-row">
+            <div class="fm-code-box">${esc(code)}</div>
+            <button type="button" class="btn line fm-copy-btn" id="fm-copy-code">코드 복사</button>
+          </div>` : ''}
+          <div class="fm-qr-wrap" ${syncOn ? '' : 'style="border-top:0;padding-top:0"'}>
+            ${this._qrHtml()}
+            <div class="fm-qr-label">카메라로 스캔하면 앱이 열려요<span>가족을 참여시킬 땐 초대 코드를 따로 보내주세요</span></div>
+            <button type="button" class="fm-qr-link" id="fm-copy-link">
+              <span class="fm-qr-link-ico">🔗</span>${esc(this._appUrl())}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  _appUrl(){
+    return App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/';
+  },
+
+  _qrHtml(){
+    // 실제 스캔 가능한 QR (ModQR). 모듈이 없으면 아래 임시 격자로 폴백.
+    if(window.ModQR && typeof ModQR.svg === 'function'){
+      const svg = ModQR.svg(this._appUrl(), { size: 140, margin: 2, dark: 'var(--ink)', rounded: false });
+      if(svg) return `<div class="fm-qr-card">${svg}</div>`;
+    }
+    return this._qrFallbackHtml(App.state.inviteCode);
+  },
+
+  _qrFallbackHtml(code){
+    const n = 13;
+    const str = String(code || 'HRK');
+    const isFinderBlock = (r, c) => (r < 5 && c < 5) || (r < 5 && c >= n - 5) || (r >= n - 5 && c < 5);
+    const finderOn = (r, c) => {
+      const lr = r < 5 ? r : r - (n - 5);
+      const lc = c < 5 ? c : c - (n - 5);
+      return lr === 0 || lr === 4 || lc === 0 || lc === 4 || (lr === 2 && lc === 2);
+    };
+    const hash = (r, c) => {
+      const s = str + '_' + r + '_' + c;
+      let h = 0;
+      for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h;
+    };
+    let cells = '';
+    for(let r = 0; r < n; r++){
+      for(let c = 0; c < n; c++){
+        const on = isFinderBlock(r, c) ? finderOn(r, c) : (hash(r, c) % 5 < 2);
+        cells += `<span class="fm-qr-cell${on ? ' on' : ''}"></span>`;
+      }
+    }
+    return `<div class="fm-qr" style="grid-template-columns:repeat(${n},1fr);grid-template-rows:repeat(${n},1fr)">${cells}</div>`;
+  },
+
+  /* ================= 공유 설정 ================= */
+
+  _shareSettingsHtml(){
+    const sh = App.state.share;
+    return `
+      <div class="fm-section">
+        <div class="sec-h"><h2>일정 공유 설정</h2><span class="sub">가족과 무엇을 나눌지 정해요</span></div>
+        <div class="panel">
+          <div class="toggle-row">
+            <div><div class="tl">일정 공유</div><div class="td">가족이 내 일정을 볼 수 있어요</div></div>
+            <button type="button" class="sw-tog ${sh.scheduleShare ? 'on' : ''}" data-share-key="scheduleShare"></button>
+          </div>
+          <div class="toggle-row">
+            <div><div class="tl">준비물 알림 함께 받기</div><div class="td">잊지 않도록 같이 알려드려요</div></div>
+            <button type="button" class="sw-tog ${sh.itemAlarm ? 'on' : ''}" data-share-key="itemAlarm"></button>
+          </div>
+          <div class="toggle-row">
+            <div><div class="tl">할 일 완료 알림</div><div class="td">아이가 할 일을 끝내면 알려줘요</div></div>
+            <button type="button" class="sw-tog warm ${sh.todoDoneAlert ? 'on' : ''}" data-share-key="todoDoneAlert"></button>
+          </div>
+          <div class="toggle-row">
+            <div><div class="tl">비밀 항목 숨기기 <span class="fm-lock-ico">🔒</span></div><div class="td">작성자만 볼 수 있어요</div></div>
+            <button type="button" class="sw-tog on fm-locked" data-share-key="secretHide"></button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  /* ================= 비밀 항목 ================= */
+
+  _secretItems(){
+    const my = App.meId();
+    const items = [];
+    const allSchedules = App.state.schedules || {};
+    Object.keys(allSchedules).forEach(mid => {
+      const byDay = allSchedules[mid] || {};
+      for(let i = 0; i < 7; i++){
+        (byDay[i] || []).forEach(s => {
+          if(s.secret && s.owner === my){
+            items.push({ type: 'schedule', label: s.t, sub: `${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
+          }
+        });
+      }
+    });
+    (App.state.todos || []).forEach(t => {
+      if(t.secret && t.owner === my){
+        items.push({ type: 'todo', label: t.text, sub: `${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
+      }
+    });
+    return items;
+  },
+
+  _secretPanelHtml(items){
+    return `
+      <div class="fm-section">
+        <div class="panel fm-secret-panel">
+          <button type="button" class="fm-secret-head" id="fm-secret-toggle" aria-expanded="false">
+            <span class="fm-secret-icon">🤫</span>
+            <span class="fm-secret-title">나만 보는 항목 <b>${items.length}</b>개</span>
+            <svg class="fm-secret-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="fm-secret-body" id="fm-secret-body">
+            <div class="fm-secret-inner">
+              ${items.length ? items.map(it => `
+                <div class="fm-secret-item">
+                  <span class="fm-secret-emoji">${it.type === 'schedule' ? '📅' : '✅'}</span>
+                  <div class="fm-secret-item-text"><b>${esc(it.label)}</b><span>${esc(it.sub)}</span></div>
+                </div>
+              `).join('') : `<div class="empty-note"><div class="big">🙂</div>아직 나만 보는 항목이 없어요</div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  /* ================= 주간 요약 ================= */
+
+  _weeklyStats(){
+    const vmId = App.vm();
+    const S = App.sched(vmId);
+    let totalSchedules = 0, alarmOn = 0;
+    const perDay = [0, 0, 0, 0, 0, 0, 0];
+    for(let i = 0; i < 7; i++){
+      (S[i] || []).forEach(s => {
+        if(!App.canSee(s)) return;
+        totalSchedules++;
+        perDay[i]++;
+        if(s.alarm) alarmOn++;
+      });
+    }
+    let todoDone = 0, todoTotal = 0;
+    for(let i = 0; i < 7; i++){
+      App.todosOf(i).forEach(t => {
+        if(!App.canSee(t)) return;
+        todoTotal++;
+        if(t.done) todoDone++;
+      });
+    }
+    return { totalSchedules, alarmOn, todoDone, todoTotal, perDay, coins: App.state.coins || 0 };
+  },
+
+  _weeklyHtml(stats){
+    const who = App.member(App.vm());
+    const whoLabel = who ? `${esc(who.emoji)} ${esc(who.name)} 기준` : '가족과 함께한 기록이에요';
+    return `
+      <div class="fm-section">
+        <div class="sec-h"><h2>이번 주 요약</h2><span class="sub">${whoLabel}</span></div>
+        <div class="fm-weekly-grid">
+          <div class="fm-weekly-stat">
+            <span class="fm-weekly-icon">📅</span>
+            <b class="fm-weekly-value">${stats.totalSchedules}</b>
+            <span class="fm-weekly-label">이번 주 일정</span>
+          </div>
+          <div class="fm-weekly-stat">
+            <span class="fm-weekly-icon">🔔</span>
+            <b class="fm-weekly-value">${stats.alarmOn}</b>
+            <span class="fm-weekly-label">알림 켜진 일정</span>
+          </div>
+          <div class="fm-weekly-stat">
+            <span class="fm-weekly-icon">✅</span>
+            <b class="fm-weekly-value">${stats.todoDone}/${stats.todoTotal}</b>
+            <span class="fm-weekly-label">완료한 할 일</span>
+          </div>
+          <div class="fm-weekly-stat">
+            <span class="fm-weekly-icon">🪙</span>
+            <b class="fm-weekly-value">${stats.coins}</b>
+            <span class="fm-weekly-label">모은 코인</span>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  _shareCtaHtml(){
+    return `
+      <div class="fm-section">
+        <button type="button" class="btn full fm-share-cta" id="fm-share-cta">
+          <span>📤</span> 이번 주 일정 카드로 공유하기
+        </button>
+      </div>
+    `;
+  },
+
+  _brandHtml(){
+    return `<div class="fm-brand">KUMA <b>routine</b></div>`;
+  },
+
+  /* ================= 주간 요약 공유 카드 ================= */
+
   openSharePreview(){
     const stats = this._weeklyStats();
     const maxCount = Math.max(1, ...stats.perDay);
-    const who = App.member(App.vm());
-    const name = who ? who.name : '우리 가족';
     const mid = App.vm();
+    const who = App.member(mid);
+    const name = who ? who.name : '우리 가족';
 
     /* 이번 주 날짜 범위 */
     const now = new Date();
@@ -4297,8 +5318,9 @@ window.ModFamily = {
     const fmt = d => `${d.getMonth() + 1}.${d.getDate()}`;
 
     /* 요일별 할 일 완료 상태 */
+    const defOwner = App.defaultTodoOwner ? App.defaultTodoOwner() : 'm1';
     const todoByDay = DAYS.map((_, i) => {
-      const list = (App.state.todos || []).filter(t => (t.for || 'm1') === mid && t.day === i && App.canSee(t));
+      const list = (App.state.todos || []).filter(t => (t.for || defOwner) === mid && t.day === i && App.canSee(t));
       return { total: list.length, done: list.filter(t => t.done).length };
     });
     const perfectDays = todoByDay.filter(d => d.total > 0 && d.done === d.total).length;
@@ -4318,8 +5340,8 @@ window.ModFamily = {
           <span class="fm-share-badge">KUMA <b>routine</b></span>
           <span class="fm-share-week">${fmt(sun)} – ${fmt(sat)}</span>
         </div>
-        <div class="fm-share-title">${this._esc(name)}의 한 주</div>
-        <div class="fm-share-head">${head}</div>
+        <div class="fm-share-title">${esc(name)}의 한 주</div>
+        <div class="fm-share-head">${esc(head)}</div>
 
         <div class="fm-share-stats">
           <div><span>일정</span><b>${stats.totalSchedules}<i>개</i></b></div>
@@ -4364,454 +5386,40 @@ window.ModFamily = {
         App.toast('이미지로 저장했어요');
       });
       footEl.querySelector('#fm-share-link').addEventListener('click', () => {
-        this._copyText((App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(App.state.inviteCode), '공유 링크를 복사했어요');
+        this._copyText(this._appUrl(), '앱 링크를 복사했어요');
       });
     });
   },
 
-  _roleSwitchHtml(role){
-    const ms = App.state.members || [];
-    const kid = ms.find(m => m.id === 'm1') || ms.find(m => m.role === 'child') || {};
-    const par = ms.find(m => m.id === 'm2') || ms.find(m => m.role === 'master') || {};
-    const hint = role === 'master'
-      ? '부모 모드에서는 보상과 할 일을 설정할 수 있어요'
-      : '아이 모드에서는 오늘 할 일과 일정을 확인할 수 있어요';
-    return `
-      <div class="fm-role-switch">
-        <div class="sec-h" style="margin-bottom:8px;"><h2>지금 보는 사람</h2></div>
-        <div class="fm-role-track">
-          <button type="button" class="fm-role-opt ${role === 'child' ? 'on' : ''}" data-role="child">
-            <span class="fm-role-em">${esc(kid.emoji || '🐣')}</span>${esc(kid.name || '아이')}</button>
-          <button type="button" class="fm-role-opt ${role === 'master' ? 'on' : ''}" data-role="master">
-            <span class="fm-role-em">${esc(par.emoji || '🌷')}</span>${esc(par.name || '부모')}</button>
-        </div>
-        <div class="fm-role-hint">${hint}</div>
-      </div>
-    `;
-  },
-
-  _membersHtml(){
-    const members = App.state.members || [];
-    const addBtn = App.isMaster()
-      ? `<button type="button" class="btn line full fm-add-btn" id="fm-add-member">+ 가족 추가</button>`
-      : '';
-    return `
-      <div class="fm-section">
-        <div class="sec-h"><h2>가족 구성원</h2><span class="sub">${members.length}명</span></div>
-        <div class="fm-members">
-          ${members.map(m => this._memberCardHtml(m)).join('')}
-        </div>
-        ${addBtn}
-      </div>
-    `;
-  },
-
-  _memberCardHtml(m){
-    const isMe = m.id === App.meId();
-    const roleLabel = m.role === 'master' ? '부모' : '아이';
-    const roleClass = m.role === 'master' ? 'fm-role-badge--master' : 'fm-role-badge--child';
-    const perm = App.isMaster() ? `<div class="fm-member-perm">${this._permSummary(m.role)}</div>` : '';
-    const color = m.color || '#7B96EF';
-    const canEdit = isMe || App.isMaster();
-    const weekCount = this._memberWeekCount(m.id);
-    return `
-      <div class="fm-member-card">
-        <button type="button" class="fm-member-avatar ${canEdit ? '' : 'fm-avatar-locked'}" data-edit-member="${m.id}"
-          style="background:${color}2A;border-color:${color}66;" aria-label="${this._esc(m.name)} 프로필 편집">${esc(m.emoji || '🙂')}</button>
-        <div class="fm-member-info">
-          <div class="fm-member-name-row">
-            <span class="fm-member-name">${this._esc(m.name)}</span>
-            <span class="fm-role-badge ${roleClass}">${roleLabel}</span>
-            ${isMe ? '<span class="fm-me-badge">나</span>' : ''}
-          </div>
-          ${perm}
-          <div class="fm-member-week">📅 이번 주 일정 ${weekCount}개</div>
-        </div>
-      </div>
-    `;
-  },
-
-  _permSummary(role){
-    return role === 'master'
-      ? '일정 · 할 일 관리 · 보상 승인 · 초대 관리'
-      : '일정 확인 · 할 일 완료하기 · 코인 모으기';
-  },
-
-  _memberWeekCount(id){
-    const S = (App.state.schedules && App.state.schedules[id]) || {};
-    let n = 0;
-    for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => { if(App.canSee(s)) n++; });
-    }
-    return n;
-  },
-
-  _avatarList(){
-    if(!App.state.avatars || !App.state.avatars.length){
-      App.state.avatars = [
-        '🐣','🐻','🐰','🦊','🐼','🐨','🦁','🐯','🐸','🐧','🦄','🐙',
-        '🐝','🦋','🌷','🌻','🌸','🍀','⭐️','🌙','☀️','🍎','🍓','🍑',
-        '🎈','🎨','🎸','⚽️','🚀','🎮','📚','🧸','👑','💎','🧁','🍩'
-      ];
-      App.save();
-    }
-    return App.state.avatars;
-  },
-
-  _findMember(id){
-    return (App.state.members || []).find(x => x.id === id);
-  },
-
-  _openMemberEditor(id){
-    const isNew = !id;
-    const canEdit = isNew ? App.isMaster() : (id === App.meId() || App.isMaster());
-    if(!canEdit){
-      App.toast('본인 프로필만 바꿀 수 있어요');
-      return;
-    }
-
-    const avatars = this._avatarList();
-    const existing = isNew ? null : this._findMember(id);
-    if(!isNew && !existing){
-      App.toast('프로필을 찾을 수 없어요');
-      return;
-    }
-    const mem = isNew
-      ? { name:'', emoji:avatars[0], role:'child', color:PALETTE[3].fill }
-      : existing;
-
-    const usedBy = {};
-    (App.state.members || []).forEach(x => {
-      if(!isNew && x.id === mem.id) return;
-      if(x.emoji) usedBy[x.emoji] = x.name;
-    });
-
-    const body = `
-      <div class="field">
-        <label>이름</label>
-        <input class="inp" id="fmName" placeholder="이름을 입력해주세요" maxlength="8" value="${this._esc(mem.name)}">
-      </div>
-      ${isNew ? `
-      <div class="field">
-        <label>역할</label>
-        <div class="fm-role-track" id="fmRolePick">
-          <button type="button" class="fm-role-opt on" data-role-pick="child">🐣 아이</button>
-          <button type="button" class="fm-role-opt" data-role-pick="master">🌷 부모</button>
-        </div>
-      </div>` : ''}
-      <div class="field">
-        <label>아바타</label>
-        <div class="fm-avatar-grid" id="fmAvatarGrid">
-          ${avatars.map(e => {
-            const dupeName = usedBy[e];
-            const on = e === mem.emoji;
-            return `<button type="button" class="fm-avatar-cell ${on ? 'on' : ''} ${dupeName ? 'dupe' : ''}" data-emoji="${e}">
-              <span class="fm-avatar-emoji">${e}</span>
-              ${dupeName ? `<span class="fm-avatar-dupe-label">${this._esc(dupeName)}</span>` : ''}
-            </button>`;
-          }).join('')}
-        </div>
-      </div>
-      <div class="field">
-        <label>프로필 색</label>
-        <div class="swatches" id="fmColorPick">
-          ${PALETTE.map(p => `<button type="button" class="sw ${p.fill === mem.color ? 'on' : ''}" data-color="${p.fill}" style="background:${p.fill}"></button>`).join('')}
-        </div>
-      </div>
-    `;
-
-    const foot = `
-      <button type="button" class="btn line" id="fmCancel" style="flex:0 0 96px">취소</button>
-      <button type="button" class="btn full" id="fmSave">${isNew ? '추가하기' : '저장하기'}</button>
-    `;
-
-    App.sheet(isNew ? '가족 추가' : '프로필 편집', body, foot, (b, f) => {
-      let pickEmoji = mem.emoji, pickColor = mem.color, pickRole = mem.role || 'child';
-
-      b.querySelectorAll('#fmAvatarGrid .fm-avatar-cell').forEach(btn => {
-        btn.addEventListener('click', () => {
-          pickEmoji = btn.dataset.emoji;
-          b.querySelectorAll('#fmAvatarGrid .fm-avatar-cell').forEach(x => x.classList.remove('on'));
-          btn.classList.add('on');
-          if(App.haptic) App.haptic();
-        });
-      });
-
-      b.querySelectorAll('#fmColorPick .sw').forEach(btn => {
-        btn.addEventListener('click', () => {
-          pickColor = btn.dataset.color;
-          b.querySelectorAll('#fmColorPick .sw').forEach(x => x.classList.remove('on'));
-          btn.classList.add('on');
-          if(App.haptic) App.haptic();
-        });
-      });
-
-      const roleTrack = b.querySelector('#fmRolePick');
-      if(roleTrack){
-        roleTrack.querySelectorAll('[data-role-pick]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            pickRole = btn.dataset.rolePick;
-            roleTrack.querySelectorAll('[data-role-pick]').forEach(x => x.classList.remove('on'));
-            btn.classList.add('on');
-          });
-        });
-      }
-
-      f.querySelector('#fmCancel').addEventListener('click', () => App.closeSheet());
-      f.querySelector('#fmSave').addEventListener('click', () => {
-        const name = b.querySelector('#fmName').value.trim();
-        if(!name){
-          App.toast('이름을 입력해주세요');
-          b.querySelector('#fmName').focus();
-          return;
-        }
-        if(isNew){
-          const newId = uid();
-          App.state.members.push({ id:newId, name, emoji:pickEmoji, role:pickRole, color:pickColor });
-          App.state.schedules[newId] = {};
-          App.save();
-          App.render();
-          App.closeSheet();
-          App.toast('가족을 추가했어요');
-        } else {
-          Object.assign(mem, { name, emoji:pickEmoji, color:pickColor });
-          App.save();
-          App.render();
-          App.closeSheet();
-          App.toast('프로필을 저장했어요');
-        }
-      });
-    });
-  },
-
-  _inviteHtml(){
-    return `
-      <div class="fm-section">
-        <div class="sec-h"><h2>초대 코드</h2><span class="sub">가족에게 공유해보세요</span></div>
-        <div class="panel fm-invite">
-          <div class="fm-invite-row">
-            <div class="fm-code-box">${this._esc(App.state.inviteCode)}</div>
-            <button type="button" class="btn ghost fm-copy-btn" id="fm-copy-code">코드 복사</button>
-          </div>
-          <div class="fm-qr-wrap">
-            ${this._qrHtml(App.state.inviteCode)}
-            <div class="fm-qr-label">QR로도 초대할 수 있어요<span>카메라로 스캔하면 초대 링크가 열려요</span></div>
-            <button type="button" class="fm-qr-link" id="fm-copy-link">
-              <span class="fm-qr-link-ico">🔗</span>${this._esc(this._inviteUrl())}
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  },
-
-  _inviteUrl(code){
-    return (App.appUrl ? App.appUrl() : 'https://kuma-go.github.io/kuma-routine/') + '?invite=' + encodeURIComponent(String(code || App.state.inviteCode || 'HRK-0000'));
-  },
-
-  _qrHtml(code){
-    // 실제 스캔 가능한 QR (ModQR). 모듈이 없으면 아래 임시 격자로 폴백.
-    if(window.ModQR && typeof ModQR.svg === 'function'){
-      const svg = ModQR.svg(this._inviteUrl(code), { size: 140, margin: 2, dark: 'var(--ink)', rounded: false });
-      if(svg) return `<div class="fm-qr-card">${svg}</div>`;
-    }
-    return this._qrFallbackHtml(code);
-  },
-
-  _qrFallbackHtml(code){
-    const n = 13;
-    const str = String(code || 'HRK');
-    const isFinderBlock = (r, c) => (r < 5 && c < 5) || (r < 5 && c >= n - 5) || (r >= n - 5 && c < 5);
-    const finderOn = (r, c) => {
-      const lr = r < 5 ? r : r - (n - 5);
-      const lc = c < 5 ? c : c - (n - 5);
-      return lr === 0 || lr === 4 || lc === 0 || lc === 4 || (lr === 2 && lc === 2);
-    };
-    const hash = (r, c) => {
-      const s = str + '_' + r + '_' + c;
-      let h = 0;
-      for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-      return h;
-    };
-    let cells = '';
-    for(let r = 0; r < n; r++){
-      for(let c = 0; c < n; c++){
-        const on = isFinderBlock(r, c) ? finderOn(r, c) : (hash(r, c) % 5 < 2);
-        cells += `<span class="fm-qr-cell${on ? ' on' : ''}"></span>`;
-      }
-    }
-    return `<div class="fm-qr" style="grid-template-columns:repeat(${n},1fr);grid-template-rows:repeat(${n},1fr)">${cells}</div>`;
-  },
-
-  _shareSettingsHtml(){
-    const sh = App.state.share;
-    return `
-      <div class="fm-section">
-        <div class="sec-h"><h2>일정 공유 설정</h2><span class="sub">가족과 무엇을 나눌지 정해요</span></div>
-        <div class="panel">
-          <div class="toggle-row">
-            <div><div class="tl">일정 공유</div><div class="td">가족이 내 일정을 볼 수 있어요</div></div>
-            <button type="button" class="sw-tog ${sh.scheduleShare ? 'on' : ''}" data-share-key="scheduleShare"></button>
-          </div>
-          <div class="toggle-row">
-            <div><div class="tl">준비물 알림 함께 받기</div><div class="td">잊지 않도록 같이 알려드려요</div></div>
-            <button type="button" class="sw-tog ${sh.itemAlarm ? 'on' : ''}" data-share-key="itemAlarm"></button>
-          </div>
-          <div class="toggle-row">
-            <div><div class="tl">할 일 완료 알림</div><div class="td">아이가 할 일을 끝내면 알려줘요</div></div>
-            <button type="button" class="sw-tog warm ${sh.todoDoneAlert ? 'on' : ''}" data-share-key="todoDoneAlert"></button>
-          </div>
-          <div class="toggle-row">
-            <div><div class="tl">비밀 항목 숨기기 <span class="fm-lock-ico">🔒</span></div><div class="td">작성자만 볼 수 있어요</div></div>
-            <button type="button" class="sw-tog on fm-locked" data-share-key="secretHide"></button>
-          </div>
-        </div>
-      </div>
-    `;
-  },
-
-  _secretItems(){
-    const my = App.meId();
-    const items = [];
-    const allSchedules = App.state.schedules || {};
-    Object.keys(allSchedules).forEach(mid => {
-      const byDay = allSchedules[mid] || {};
-      for(let i = 0; i < 7; i++){
-        (byDay[i] || []).forEach(s => {
-          if(s.secret && s.owner === my){
-            items.push({ type: 'schedule', label: s.t, sub: `${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
-          }
-        });
-      }
-    });
-    (App.state.todos || []).forEach(t => {
-      if(t.secret && t.owner === my){
-        items.push({ type: 'todo', label: t.text, sub: `${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
-      }
-    });
-    return items;
-  },
-
-  _secretPanelHtml(items){
-    return `
-      <div class="fm-section">
-        <div class="panel fm-secret-panel">
-          <button type="button" class="fm-secret-head" id="fm-secret-toggle" aria-expanded="false">
-            <span class="fm-secret-icon">🤫</span>
-            <span class="fm-secret-title">나만 보는 항목 <b>${items.length}</b>개</span>
-            <svg class="fm-secret-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </button>
-          <div class="fm-secret-body" id="fm-secret-body">
-            <div class="fm-secret-inner">
-              ${items.length ? items.map(it => `
-                <div class="fm-secret-item">
-                  <span class="fm-secret-emoji">${it.type === 'schedule' ? '📅' : '✅'}</span>
-                  <div class="fm-secret-item-text"><b>${this._esc(it.label)}</b><span>${it.sub}</span></div>
-                </div>
-              `).join('') : `<div class="empty-note"><div class="big">🙂</div>아직 나만 보는 항목이 없어요</div>`}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  },
-
-  _weeklyStats(){
-    const vmId = App.vm();
-    const S = App.sched(vmId);
-    let totalSchedules = 0, alarmOn = 0;
-    const perDay = [0, 0, 0, 0, 0, 0, 0];
-    for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => {
-        if(!App.canSee(s)) return;
-        totalSchedules++;
-        perDay[i]++;
-        if(s.alarm) alarmOn++;
-      });
-    }
-    let todoDone = 0, todoTotal = 0;
-    for(let i = 0; i < 7; i++){
-      App.todosOf(i).forEach(t => {
-        if(!App.canSee(t)) return;
-        todoTotal++;
-        if(t.done) todoDone++;
-      });
-    }
-    return { totalSchedules, alarmOn, todoDone, todoTotal, perDay, coins: App.state.coins || 0 };
-  },
-
-  _weeklyHtml(stats){
-    const who = App.member(App.vm());
-    const whoLabel = who ? `${esc(who.emoji)} ${this._esc(who.name)} 기준` : '가족과 함께한 기록이에요';
-    return `
-      <div class="fm-section">
-        <div class="sec-h"><h2>이번 주 요약</h2><span class="sub">${whoLabel}</span></div>
-        <div class="fm-weekly-grid">
-          <div class="fm-weekly-stat">
-            <span class="fm-weekly-icon">📅</span>
-            <b class="fm-weekly-value">${stats.totalSchedules}</b>
-            <span class="fm-weekly-label">이번 주 일정</span>
-          </div>
-          <div class="fm-weekly-stat">
-            <span class="fm-weekly-icon">🔔</span>
-            <b class="fm-weekly-value">${stats.alarmOn}</b>
-            <span class="fm-weekly-label">알림 켜진 일정</span>
-          </div>
-          <div class="fm-weekly-stat">
-            <span class="fm-weekly-icon">✅</span>
-            <b class="fm-weekly-value">${stats.todoDone}/${stats.todoTotal}</b>
-            <span class="fm-weekly-label">완료한 할 일</span>
-          </div>
-          <div class="fm-weekly-stat">
-            <span class="fm-weekly-icon">🪙</span>
-            <b class="fm-weekly-value">${stats.coins}</b>
-            <span class="fm-weekly-label">모은 코인</span>
-          </div>
-        </div>
-      </div>
-    `;
-  },
-
-  _shareCtaHtml(){
-    return `
-      <div class="fm-section">
-        <button type="button" class="btn full fm-share-cta" id="fm-share-cta">
-          <span>📤</span> 이번 주 일정 카드로 공유하기
-        </button>
-      </div>
-    `;
-  },
-
-  _brandHtml(){
-    return `<div class="fm-brand">KUMA <b>routine</b></div>`;
-  },
+  /* ================= 바인딩 ================= */
 
   _bind(root){
-    root.querySelectorAll('[data-role]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const r = btn.dataset.role;
-        if(App.state.role === r) return;
-        if(r === 'master' && typeof App.toMaster === 'function'){ App.toMaster(); return; }
-        if(r === 'child' && typeof App.toChild === 'function'){ App.toChild(); return; }
-        App.state.role = r;
-        App.save();
-        App.render();
-      });
+    const on = (sel, fn) => {
+      const el = root.querySelector(sel);
+      if(el) el.addEventListener('click', fn);
+    };
+
+    on('#fm-swap-owner', () => {
+      if(typeof App.openDeviceOwner === 'function') App.openDeviceOwner();
     });
 
-    const copyBtn = root.querySelector('#fm-copy-code');
-    if(copyBtn){
-      copyBtn.addEventListener('click', () => {
-        this._copyText(App.state.inviteCode, '초대 코드를 복사했어요');
-      });
-    }
+    on('#fm-add-member', () => this._openMemberEditor(null));
 
-    const copyLinkBtn = root.querySelector('#fm-copy-link');
-    if(copyLinkBtn){
-      copyLinkBtn.addEventListener('click', () => {
-        this._copyText(this._inviteUrl(), '초대 링크를 복사했어요');
-      });
-    }
+    on('#fm-invite', () => {
+      if(window.ModSync && typeof ModSync.openInviteIssue === 'function') ModSync.openInviteIssue();
+      else App.toast('초대를 불러올 수 없어요');
+    });
+
+    on('#fm-open-sync', () => {
+      if(window.ModSync && typeof ModSync.open === 'function') ModSync.open();
+      else App.toast('가족 그룹을 불러올 수 없어요');
+    });
+
+    on('#fm-perm', () => this.openPermSheet());
+    on('#fm-transfer', () => this.openTransferSheet());
+
+    on('#fm-copy-code', () => this._copyText(App.state.inviteCode, '그룹 코드를 복사했어요'));
+    on('#fm-copy-link', () => this._copyText(this._appUrl(), '앱 링크를 복사했어요'));
 
     root.querySelectorAll('[data-share-key]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -4828,15 +5436,12 @@ window.ModFamily = {
     });
 
     root.querySelectorAll('[data-edit-member]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._openMemberEditor(btn.dataset.editMember);
-      });
+      btn.addEventListener('click', () => this._openMemberEditor(btn.dataset.editMember));
     });
 
-    const addMemberBtn = root.querySelector('#fm-add-member');
-    if(addMemberBtn){
-      addMemberBtn.addEventListener('click', () => this._openMemberEditor(null));
-    }
+    root.querySelectorAll('[data-member-menu]').forEach(btn => {
+      btn.addEventListener('click', () => this._openMemberMenu(btn.dataset.memberMenu));
+    });
 
     const secretToggle = root.querySelector('#fm-secret-toggle');
     const secretBody = root.querySelector('#fm-secret-body');
@@ -4846,19 +5451,14 @@ window.ModFamily = {
         secretToggle.setAttribute('aria-expanded', String(!expanded));
         secretToggle.classList.toggle('on', !expanded);
         if(App.haptic) App.haptic();
-        if(expanded){
-          secretBody.style.maxHeight = '0px';
-        } else {
-          secretBody.style.maxHeight = secretBody.scrollHeight + 'px';
-        }
+        secretBody.style.maxHeight = expanded ? '0px' : (secretBody.scrollHeight + 'px');
       });
     }
 
-    const shareCta = root.querySelector('#fm-share-cta');
-    if(shareCta){
-      shareCta.addEventListener('click', () => this.openSharePreview());
-    }
+    on('#fm-share-cta', () => this.openSharePreview());
   },
+
+  /* ================= 유틸 ================= */
 
   _copyText(text, successMsg){
     const done = () => {
@@ -4890,11 +5490,7 @@ window.ModFamily = {
     }
   },
 
-  _esc(s){
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
+  _esc(s){ return esc(s); }
 };
 
 
@@ -5985,13 +6581,18 @@ window.ModOnboard = {
 
   _finish(draft, useDemo){
     if(draft && draft.role){
-      App.state.role = draft.role;
       const m1 = App.state.members.find(m => m.id === 'm1');
       const m2 = App.state.members.find(m => m.id === 'm2');
-      if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; }
+      if(m1){ m1.name = draft.child.name || '아이';  m1.emoji = draft.child.emoji  || '🐣'; m1.role='child'; }
       if(m2){ m2.name = draft.parent.name || '부모'; m2.emoji = draft.parent.emoji || '🌷'; }
-      const me = App.state.role === 'master' ? m2 : m1;
-      if(me) App.state.me = { name: me.name, emoji: me.emoji, role: App.state.role };
+      /* 이 기기를 처음 켠 사람이 그룹의 마스터가 된다.
+         아이가 먼저 켰다면 아이가 마스터다 — 나중에 부모에게 위임할 수 있다. */
+      const meIsParent = draft.role === 'master';
+      App.state.meId = meIsParent ? 'm2' : 'm1';
+      App.state.members.forEach(m => { m.role = (m.id==='m2' ? 'parent' : 'child'); });
+      const me = App.state.members.find(m => m.id === App.state.meId);
+      if(me) me.role = 'master';
+      App.migrate();
     }
     this._footAction = null;
     if(useDemo && App.applyDemo) App.applyDemo();
@@ -6618,7 +7219,7 @@ window.ModReport = {
     const itemTitleStats = {};
 
     for(let d = 0; d < 7; d++){
-      const todosDay = App.state.todos.filter(t => (t.for || 'm1') === memberId && t.day === d && App.canSee(t));
+      const todosDay = App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t));
       const doneDay = todosDay.filter(t => t.done);
       const coinDay = doneDay.reduce((s, t) => s + (t.coin || 0), 0);
       totalTodos += todosDay.length; doneTodos += doneDay.length;
@@ -6842,7 +7443,7 @@ window.ModReport = {
   },
 
   _compareHtml(){
-    if(!App.isMaster()) return '';
+    if(!App.can('editOthers')) return '';
     const children = App.state.members.filter(m => m.role === 'child');
     if(children.length < 2) return '';
     const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id)) }));
@@ -7168,7 +7769,7 @@ window.ModSearch = {
   /* ---------- 매칭 ---------- */
   _collectMatches(q){
     const ql = q.toLowerCase();
-    const memberIds = App.isMaster() ? App.state.members.map(m => m.id) : ['m1'];
+    const memberIds = App.canSwitchMember() ? App.state.members.map(m => m.id) : [App.meId()];
     const schedRows = [], todoRows = [], supplyRows = [];
 
     memberIds.forEach(mid => {
@@ -7186,7 +7787,7 @@ window.ModSearch = {
         });
       }
       App.state.todos.forEach(t => {
-        const forId = t.for || 'm1';
+        const forId = t.for || App.defaultTodoOwner();
         if(forId !== mid) return;
         if(!App.canSee(t)) return;
         if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member });
@@ -8039,6 +8640,45 @@ window.ModSync = {
       color:var(--ink2); line-height:1.95; }
     .sy-steps b{ color:var(--ink); }
     .sy-note{ font-size:11.5px; font-weight:700; color:var(--muted); line-height:1.6; margin-top:14px; }
+    .sy-meline{ display:flex; align-items:center; gap:12px; padding:13px 15px; border-radius:var(--r-m);
+      background:var(--indigo-s); margin-bottom:12px; }
+    .sy-meav{ width:40px; height:40px; border-radius:50%; background:#fff;
+      display:flex; align-items:center; justify-content:center; font-size:21px; flex:0 0 auto; }
+    .sy-metx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .sy-metx b{ font-size:14.5px; font-weight:800; color:var(--indigo); }
+    .sy-metx small{ font-size:11.5px; font-weight:700; color:var(--ink2); }
+
+    .iv-list{ display:flex; flex-direction:column; gap:8px; }
+    .iv-opt{ display:flex; align-items:center; gap:11px; width:100%; padding:12px 14px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      text-align:left; cursor:pointer; transition:.18s cubic-bezier(.22,1,.36,1); }
+    .iv-opt.on{ border-color:var(--indigo); background:var(--indigo-s); }
+    .iv-av{ width:36px; height:36px; border-radius:50%; background:var(--bg);
+      display:flex; align-items:center; justify-content:center; font-size:19px; flex:0 0 auto; }
+    .iv-tx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .iv-tx b{ font-size:14px; font-weight:800; color:var(--ink); }
+    .iv-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); }
+    .iv-opt.on .iv-tx b{ color:var(--indigo); }
+    .iv-go{ margin-left:auto; font-size:12px; font-weight:800; color:var(--indigo); flex:0 0 auto; }
+
+    .iv-role{ display:flex; gap:8px; }
+    .iv-rb{ flex:1; padding:11px 0; border-radius:var(--r-s); border:1.6px solid var(--line);
+      background:transparent; font-size:13px; font-weight:800; color:var(--muted); cursor:pointer;
+      transition:.18s cubic-bezier(.22,1,.36,1); }
+    .iv-rb.on{ border-color:var(--indigo); background:var(--indigo-s); color:var(--indigo); }
+
+    .iv-card{ text-align:center; padding:6px 0 16px; }
+    .iv-card-av{ width:76px; height:76px; margin:0 auto 10px; border-radius:50%;
+      background:var(--indigo-s); display:flex; align-items:center; justify-content:center; font-size:38px; }
+    .iv-card-nm{ font-size:20px; font-weight:800; color:var(--ink); }
+    .iv-card-rl{ font-size:12.5px; font-weight:700; color:var(--muted); margin-top:3px; }
+
+    #phone.th-dark .iv-opt, #phone.th-dark .iv-rb{ border-color:#33333F; }
+    #phone.th-dark .iv-opt.on, #phone.th-dark .iv-rb.on{
+      border-color:#7A6EEA; background:rgba(122,110,234,.16); }
+    #phone.th-dark .iv-opt.on .iv-tx b, #phone.th-dark .iv-rb.on{ color:#B7AEFF; }
+    #phone.th-dark .sy-meav{ background:#2A2A36; }
+
     .sy-rules{
       background:var(--bg); border-radius:var(--r-s); padding:11px 12px; margin-top:9px;
       font-family:'SFMono-Regular',Menlo,Consolas,monospace; font-size:10.5px; line-height:1.6;
@@ -8148,10 +8788,20 @@ window.ModSync = {
   async createGroup(){
     await this._auth();
     const code = this.newCode();
+
+    /* 그룹을 만든 사람이 마스터다. 이 기기의 주인에게 uid 를 묶고,
+       나머지 프로필은 "아직 아무 기기도 쓰지 않는 상태"로 둔다. */
+    const meId = App.meId();
+    App.state.members.forEach(m => {
+      m.uid = (m.id === meId) ? this._uid : null;
+      m.role = (m.id === meId) ? 'master' : (m.role === 'master' ? 'parent' : (m.role || 'child'));
+    });
+    App.migrate();
+
     const body = {
       createdAt: Date.now(),
       owner: this._uid,
-      members: { [this._uid]: { name: (App.member(App.meId())||{}).name || '나', at: Date.now() } },
+      devices: { [this._uid]: { member: meId, at: Date.now() } },
       rev: 1,
       by: this._uid,
       state: this._snapshot()
@@ -8168,36 +8818,123 @@ window.ModSync = {
     return code;
   },
 
-  async joinGroup(rawCode){
-    const code = String(rawCode||'').trim().toUpperCase().replace(/\s/g,'');
-    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) throw new Error('코드 형식이 올바르지 않아요');
+  /* ---------- 지정 초대 ----------
+     "누구로 들어올지"를 초대장에 적어서 발급한다.
+     받는 사람은 역할을 고를 수 없다 — 아이가 부모로 들어오는 일을 막는다. */
+  async createInvite(memberId){
+    if(!this.enabled()) throw new Error('먼저 가족 그룹을 만들어 주세요');
+    if(!App.can('invite')) throw new Error('초대할 권한이 없어요');
+    const m = App.member(memberId);
+    if(!m) throw new Error('그 프로필을 찾지 못했어요');
+    if(m.role === 'master') throw new Error('마스터는 초대로 넘길 수 없어요');
     await this._auth();
+    /* 방금 만든 프로필이 아직 안 올라갔을 수 있다.
+       초대장을 먼저 뿌리면 받는 쪽이 "그런 사람 없다"를 보게 된다. */
+    clearTimeout(this._pushTimer);
+    await this.push();
+    const token = this.newCode();
+    const r = await fetch(this._url('/invites/' + token), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        group: App.state.sync.group, member: memberId,
+        name: m.name, emoji: m.emoji, role: m.role,
+        by: this._uid, at: Date.now()
+      })
+    });
+    if(!r.ok) throw new Error(await this._errText(r));
+    return token;
+  },
+
+  /* 초대장을 열어보기만 한다 — 확인 화면에 보여줄 정보 */
+  async peekInvite(rawToken){
+    const token = String(rawToken||'').trim().toUpperCase().replace(/\s/g,'');
+    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(token)) throw new Error('코드 형식이 올바르지 않아요');
+    await this._auth();
+    const r = await fetch(this._url('/invites/' + token));
+    if(!r.ok) throw new Error(await this._errText(r));
+    const inv = await r.json();
+    if(!inv) throw new Error('그 초대 코드를 찾지 못했어요');
+    if(inv.usedBy && inv.usedBy !== this._uid) throw new Error('이미 사용된 초대 코드예요');
+    return Object.assign({token}, inv);
+  },
+
+  /* 초대장대로 참여한다.
+     bundle 을 넘기면 이 기기에 있던 일정을 내 프로필 밑으로 옮겨 붙인다. */
+  async acceptInvite(inv, bundle){
+    await this._auth();
+    const code = inv.group;
     const r = await fetch(this._url('/groups/' + code));
     if(!r.ok) throw new Error(await this._errText(r));
     const g = await r.json();
-    if(!g) throw new Error('그 코드의 그룹을 찾지 못했어요');
+    if(!g) throw new Error('그룹을 찾지 못했어요');
 
-    await fetch(this._url('/groups/' + code + '/members/' + this._uid), {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name:(App.member(App.meId())||{}).name || '나', at: Date.now() })
-    });
+    /* 그룹 상태를 받되, "내가 누구인지"는 초대장이 정한다 */
+    if(g.state) this._applyRemote(g.state, {keepMe:false});
+    const mine = App.state.members.find(m => m.id === inv.member);
+    if(!mine) throw new Error('초대된 프로필이 그룹에서 사라졌어요');
+    if(mine.uid && mine.uid !== this._uid) throw new Error('그 프로필은 이미 다른 기기가 쓰고 있어요');
 
+    mine.uid = this._uid;
+    App.state.meId = mine.id;
     App.state.sync.group = code;
     App.state.sync.on = true;
     App.state.inviteCode = code;
-    if(g.state) this._applyRemote(g.state);
+    App.viewMember = null;
+    App.migrate();
+
+    let merged = 0;
+    if(bundle && bundle.count) merged = App.mergeBundleInto(bundle, mine.id);
+
+    await fetch(this._url('/groups/' + code + '/devices/' + this._uid), {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ member: mine.id, at: Date.now() })
+    });
+    await fetch(this._url('/invites/' + inv.token), {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ usedBy: this._uid, usedAt: Date.now() })
+    });
+
     App.save();
     this.connect();
-    return { code, members: Object.keys(g.members||{}).length };
+    await this.push();                       // 내 uid 바인딩과 합친 데이터를 곧바로 올린다
+    return { code, member: mine, merged };
+  },
+
+  /* 공용 코드로 들어오는 예전 방식 — 초대 코드로 먼저 해석해 보고, 아니면 그룹 코드로 본다 */
+  async joinGroup(rawCode, bundle){
+    const code = String(rawCode||'').trim().toUpperCase().replace(/\s/g,'');
+    if(!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) throw new Error('코드 형식이 올바르지 않아요');
+    let inv = null;
+    try{ inv = await this.peekInvite(code); }catch(e){ /* 그룹 코드일 수 있다 */ }
+    if(inv) return this.acceptInvite(inv, bundle);
+    throw new Error('초대 코드를 찾지 못했어요 · 가족에게 새로 발급받아 주세요');
   },
 
   leaveGroup(){
     this.disconnect();
+    const me = App.member(App.meId());
+    if(me && me.uid === this._uid) me.uid = null;   // 이 기기의 바인딩만 푼다
     App.state.sync.group = null;
     App.state.sync.on = false;
     App.save();
     this._setStatus('off','');
     App.render();
+  },
+
+  /* 마스터 위임 — 한 번에 두 사람을 바꿔야 마스터가 둘이 되지 않는다 */
+  transferMaster(toId){
+    if(!App.isMaster()) throw new Error('마스터만 넘길 수 있어요');
+    const to = App.member(toId);
+    if(!to || to.id === App.meId()) throw new Error('넘길 사람을 골라 주세요');
+    if(to.role === 'child') throw new Error('아이에게는 넘길 수 없어요');
+    App.state.members.forEach(m => {
+      if(m.role === 'master') m.role = 'parent';
+    });
+    to.role = 'master';
+    App.migrate();
+    App.save();
+    App.render();
+    return to;
   },
 
   async _errText(r){
@@ -8215,10 +8952,15 @@ window.ModSync = {
     };
   },
 
-  _applyRemote(st){
+  /* 그룹의 내용을 받아 덮되, "이 기기가 누구인지"는 절대 덮지 않는다.
+     meId 는 동기화 대상이 아니다 — 기기마다 다른 사람이기 때문. */
+  _applyRemote(st, opt){
     if(!st) return;
+    const keepMe = !opt || opt.keepMe !== false;
     this._pullingSelf = true;
     const s = App.state;
+    const prevMe = s.meId;
+
     if(st.members) s.members = st.members;
     if(st.schedules) s.schedules = st.schedules;
     if(st.todos) s.todos = st.todos;
@@ -8226,6 +8968,15 @@ window.ModSync = {
     if(typeof st.coins === 'number') s.coins = st.coins;
     if(st.doneEv) s.doneEv = st.doneEv;
     if(st.badges) s.badges = st.badges;
+
+    if(keepMe){
+      /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */
+      const byUid = (s.members||[]).find(m => m.uid && m.uid === this._uid);
+      if(byUid) s.meId = byUid.id;
+      else if((s.members||[]).some(m => m.id === prevMe)) s.meId = prevMe;
+      /* 둘 다 아니면 migrate 가 첫 멤버로 떨어뜨린다 */
+    }
+    App.migrate();
     try{ localStorage.setItem('haruk', JSON.stringify(s)); }catch(e){}
     this._pullingSelf = false;
   },
@@ -8353,29 +9104,35 @@ window.ModSync = {
     const body = this.configured()
       ? `${this.stateHtml()}
          ${inGroup ? `
-           <div class="field">
-             <label>우리 가족 초대 코드</label>
-             <div class="sy-code">${esc(s.group)}</div>
-             <button class="btn full" id="syCopy">초대 코드 복사하기</button>
+           <div class="sy-meline">
+             <span class="sy-meav">${esc((App.me()||{}).emoji||'🙂')}</span>
+             <span class="sy-metx">
+               <b>${esc((App.me()||{}).name||'나')}</b>
+               <small>이 기기는 ${esc(ROLE_LABEL[(App.me()||{}).role]||'아이')}로 연결돼 있어요</small>
+             </span>
            </div>
+           <div class="sy-members">
+             ${(App.state.members||[]).map(m=>`<span class="sy-mem ${m.uid?'':'off'}">
+               <i></i>${esc(m.emoji)} ${esc(m.name)}
+               <em style="font-style:normal;opacity:.62">${m.uid?'':'· 기기 없음'}</em></span>`).join('')}
+           </div>
+           ${App.can('invite') ? `<button class="btn full" id="syInvite" style="margin-top:16px">가족 초대하기</button>` : ''}
            <p class="sy-note">
-             같이 쓸 사람에게 이 코드를 알려주고, 상대방 앱에서
-             <b>가족 그룹 → 코드로 참여하기</b> 에 입력하면 됩니다.<br>
-             한쪽에서 일정을 바꾸면 다른 기기에 바로 반영돼요.
+             초대는 <b>누구로 들어올지 정해서</b> 발급합니다.
+             받는 사람은 역할을 고를 수 없어서, 아이가 부모로 들어오는 일이 없어요.
            </p>
-           <button class="btn line full" id="syLeave" style="margin-top:18px">그룹에서 나가기</button>
+           <button class="btn line full" id="syLeave" style="margin-top:18px">이 기기 연결 끊기</button>
          ` : `
            <button class="btn full" id="syCreate" style="margin-bottom:12px">새 가족 그룹 만들기</button>
            <div class="field" style="margin-top:18px">
-             <label>이미 있는 그룹에 들어가기</label>
+             <label>받은 초대 코드로 참여하기</label>
              <input class="inp" id="syCode" placeholder="ABCD-1234" maxlength="9"
                style="text-align:center;letter-spacing:.14em;font-family:'SFMono-Regular',Menlo,monospace;text-transform:uppercase">
            </div>
-           <button class="btn line full" id="syJoin">코드로 참여하기</button>
+           <button class="btn line full" id="syJoin">초대 코드로 참여하기</button>
            <p class="sy-note">
-             그룹을 만들면 이 기기의 일정이 그대로 올라가고,
-             참여하면 <b>그룹의 내용을 받아옵니다.</b><br>
-             한쪽에서 일정을 바꾸면 다른 기기에 바로 반영돼요.
+             그룹을 만든 사람이 <b>마스터</b>가 되고, 권한을 정합니다.
+             참여할 때는 초대장에 적힌 프로필로 들어가요.
            </p>
          `}
          ${this.builtIn() || !this.devMode() ? '' : `<button class="btn line full" id="syCfgBtn" style="margin-top:22px">서버 설정 바꾸기</button>`}`
@@ -8421,6 +9178,12 @@ window.ModSync = {
   "rules": {
     "groups": {
       "$code": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "invites": {
+      "$token": {
         ".read":  "auth != null",
         ".write": "auth != null"
       }
@@ -8499,18 +9262,21 @@ window.ModSync = {
         const join = $('#syJoin');
         if(join) join.onclick = async () => {
           const v = $('#syCode').value;
-          join.textContent = '들어가는 중…'; join.disabled = true;
+          join.textContent = '확인하는 중…'; join.disabled = true;
           try{
-            const r = await this.joinGroup(v);
+            const inv = await this.peekInvite(v);
             App.closeSheet();
-            App.toast(`그룹에 들어왔어요 · 가족 ${r.members}명`);
-            if(window.ModSound) ModSound.play('complete');
-            App.render();
-            setTimeout(() => this.open(), 300);
+            setTimeout(() => this.openInvite(inv), 260);
           }catch(e){
-            join.textContent = '코드로 참여하기'; join.disabled = false;
+            join.textContent = '초대 코드로 참여하기'; join.disabled = false;
             App.toast(e.message || '들어가지 못했어요');
           }
+        };
+
+        const invBtn = $('#syInvite');
+        if(invBtn) invBtn.onclick = () => {
+          App.closeSheet();
+          setTimeout(() => this.openInviteIssue(), 240);
         };
 
         const copy = $('#syCopy');
@@ -8526,9 +9292,161 @@ window.ModSync = {
         if(leave) leave.onclick = () => {
           this.leaveGroup();
           App.closeSheet();
-          App.toast('그룹에서 나왔어요 · 이 기기에서만 사용해요');
+          App.toast('연결을 끊었어요 · 이 기기에서만 사용해요');
         };
       });
+  },
+
+  /* ================= 초대 발급 (마스터·권한자) ================= */
+  openInviteIssue(){
+    if(!App.can('invite')) return App.toast('초대할 권한이 없어요');
+    const open  = App.state.members.filter(m => !m.uid && m.role !== 'master');
+    const taken = App.state.members.filter(m =>  m.uid);
+
+    const body = `
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+        <b>누구로 들어올지</b> 먼저 정해요.<br>
+        받는 사람은 역할을 바꿀 수 없어서 안전합니다.
+      </p>
+      ${open.length ? `
+        <div class="field"><label>기다리고 있는 프로필</label>
+          <div class="iv-list">
+            ${open.map(m => `<button class="iv-opt" data-id="${esc(m.id)}">
+                <span class="iv-av">${esc(m.emoji)}</span>
+                <span class="iv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}</small></span>
+                <span class="iv-go">초대 →</span>
+              </button>`).join('')}
+          </div>
+        </div>` : `
+        <div class="panel" style="padding:14px 15px;margin-bottom:16px">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ink2);line-height:1.6">
+            초대할 수 있는 빈 프로필이 없어요.<br>아래에서 새로 만들어 주세요.
+          </div>
+        </div>`}
+      <div class="field" style="margin-top:6px"><label>새로 만들어 초대하기</label>
+        <input class="inp" id="ivName" placeholder="이름 (예: 아빠, 둘째)" maxlength="12">
+        <div class="iv-role" id="ivRole" style="margin-top:10px">
+          <button class="iv-rb on" data-r="child">🐣 아이</button>
+          <button class="iv-rb" data-r="parent">🌷 부모</button>
+        </div>
+      </div>
+      <button class="btn full" id="ivNew">만들고 초대 코드 받기</button>
+      ${taken.length ? `<p class="sy-note">이미 기기가 연결된 사람 · ${taken.map(m=>esc(m.emoji+' '+m.name)).join(', ')}</p>` : ''}`;
+
+    App.sheet('가족 초대하기', body, `<button class="btn line full" id="ivC">닫기</button>`, (b,f) => {
+      f.querySelector('#ivC').onclick = () => App.closeSheet();
+      let role = 'child';
+      b.querySelectorAll('#ivRole .iv-rb').forEach(r => r.onclick = () => {
+        role = r.dataset.r;
+        b.querySelectorAll('#ivRole .iv-rb').forEach(x => x.classList.toggle('on', x === r));
+      });
+      const issue = async (memberId, btn, label) => {
+        btn.textContent = '발급하는 중…'; btn.disabled = true;
+        try{
+          const token = await this.createInvite(memberId);
+          App.closeSheet();
+          setTimeout(() => this.showInviteCode(token, App.member(memberId)), 260);
+        }catch(e){
+          btn.textContent = label; btn.disabled = false;
+          App.toast(e.message || '발급하지 못했어요');
+        }
+      };
+      b.querySelectorAll('.iv-opt').forEach(o => o.onclick = () => issue(o.dataset.id, o, '초대 →'));
+      b.querySelector('#ivNew').onclick = () => {
+        const name = (b.querySelector('#ivName').value || '').trim();
+        if(!name) return App.toast('이름을 적어 주세요');
+        const m = App.newMember({ name, emoji: role === 'parent' ? '🌷' : '🐣', role });
+        App.save();
+        issue(m.id, b.querySelector('#ivNew'), '만들고 초대 코드 받기');
+      };
+    });
+  },
+
+  showInviteCode(token, member){
+    const url = App.appUrl() + '?invite=' + encodeURIComponent(token);
+    const body = `
+      <div class="iv-card">
+        <div class="iv-card-av">${esc((member||{}).emoji||'🙂')}</div>
+        <div class="iv-card-nm">${esc((member||{}).name||'가족')}</div>
+        <div class="iv-card-rl">${esc(ROLE_LABEL[(member||{}).role]||'아이')}로 참여합니다</div>
+      </div>
+      <div class="sy-code">${esc(token)}</div>
+      <button class="btn full" id="ivCopy">초대 링크 복사하기</button>
+      <p class="sy-note">
+        이 코드는 <b>한 번만</b> 쓸 수 있어요. 링크를 열면 바로 참여 화면이 뜹니다.<br>
+        코드만 알려줘도 되고, 상대가 <b>가족 그룹 → 초대 코드로 참여하기</b> 에 넣으면 됩니다.
+      </p>
+      ${window.ModQR ? `<div id="ivQR" style="display:flex;justify-content:center;margin-top:16px"></div>` : ''}`;
+    App.sheet('초대 코드가 나왔어요', body, `<button class="btn line full" id="ivkC">닫기</button>`, (b,f) => {
+      f.querySelector('#ivkC').onclick = () => App.closeSheet();
+      b.querySelector('#ivCopy').onclick = () => {
+        const txt = `KUMA routine 가족 초대\n${(member||{}).name||''} 님으로 참여해 주세요\n${url}`;
+        if(navigator.clipboard && navigator.clipboard.writeText)
+          navigator.clipboard.writeText(txt).then(() => App.toast('초대 링크를 복사했어요'))
+            .catch(() => App.toast('복사에 실패했어요'));
+        else App.toast('복사에 실패했어요');
+      };
+      const q = b.querySelector('#ivQR');
+      if(q && window.ModQR && ModQR.render) { try{ ModQR.render(q, url, 168); }catch(e){} }
+    });
+  },
+
+  /* ================= 초대 받기 ================= */
+  async openInvite(invOrToken){
+    let inv = invOrToken;
+    try{
+      if(typeof inv === 'string') inv = await this.peekInvite(inv);
+    }catch(e){ return App.toast(e.message || '초대를 확인하지 못했어요'); }
+
+    const bundle = App.hasAnyData() ? App.localBundle() : null;
+    const body = `
+      <div class="iv-card">
+        <div class="iv-card-av">${esc(inv.emoji||'🙂')}</div>
+        <div class="iv-card-nm">${esc(inv.name||'가족')}</div>
+        <div class="iv-card-rl">${esc(ROLE_LABEL[inv.role]||'아이')}로 참여해요</div>
+      </div>
+      <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7;text-align:center">
+        이 기기는 앞으로 <b>${esc(inv.name||'이 사람')}</b>의 기기가 됩니다.<br>
+        가족의 일정이 실시간으로 함께 보여요.
+      </p>
+      ${bundle ? `
+        <div class="field"><label>이 기기에 있던 일정 ${bundle.count}개</label>
+          <div class="iv-list">
+            <button class="iv-opt iv-pick on" data-k="keep">
+              <span class="iv-av">📦</span>
+              <span class="iv-tx"><b>가져올래요</b><small>내 프로필 밑으로 옮겨서 함께 봐요</small></span>
+            </button>
+            <button class="iv-opt iv-pick" data-k="drop">
+              <span class="iv-av">✨</span>
+              <span class="iv-tx"><b>새로 시작할래요</b><small>가족의 일정만 받아옵니다</small></span>
+            </button>
+          </div>
+        </div>` : ''}`;
+
+    App.sheet('가족 초대를 받았어요', body,
+      `<button class="btn line" id="ivnLater" style="flex:0 0 96px">나중에</button>
+       <button class="btn full" id="ivnGo">참여하기</button>`, (b,f) => {
+      let keep = true;
+      b.querySelectorAll('.iv-pick').forEach(p => p.onclick = () => {
+        keep = p.dataset.k === 'keep';
+        b.querySelectorAll('.iv-pick').forEach(x => x.classList.toggle('on', x === p));
+      });
+      f.querySelector('#ivnLater').onclick = () => App.closeSheet();
+      const go = f.querySelector('#ivnGo');
+      go.onclick = async () => {
+        go.textContent = '참여하는 중…'; go.disabled = true;
+        try{
+          const r = await this.acceptInvite(inv, keep ? bundle : null);
+          App.closeSheet();
+          App.toast(`${r.member.emoji} ${r.member.name}(으)로 참여했어요` + (r.merged ? ` · ${r.merged}개 가져옴` : ''));
+          if(window.ModSound) ModSound.play('complete');
+          App.render();
+        }catch(e){
+          go.textContent = '참여하기'; go.disabled = false;
+          App.toast(e.message || '참여하지 못했어요');
+        }
+      };
+    });
   }
 };
 
@@ -8709,41 +9627,25 @@ App.checkInvite=function(){
   if(!code)return;
   try{ history.replaceState(null,'',location.pathname); }catch(e){}
   setTimeout(()=>{
-    this.sheet('가족 초대를 받았어요',`
-      <div style="text-align:center;padding:6px 0 18px">
-        <div style="font-size:44px">👨‍👩‍👧</div>
-        <div style="font-size:13px;font-weight:800;color:var(--muted);margin-top:10px">초대 코드</div>
-        <div style="font-size:24px;font-weight:800;letter-spacing:.12em;font-family:'SFMono-Regular',Menlo,monospace">${esc(code)}</div>
-      </div>
-      <p style="margin:0 0 14px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
-        아래에서 <b>코드로 참여하기</b> 를 누르면 가족 일정을 함께 보게 돼요.
-        한쪽에서 일정을 바꾸면 다른 기기에 바로 반영됩니다.
-      </p>`,
-      `<button class="btn line" id="ivLater" style="flex:0 0 96px">나중에</button>
-       <button class="btn full" id="ivGo">코드로 참여하기</button>`,
-      (b,f)=>{
-        f.querySelector('#ivLater').onclick=()=>this.closeSheet();
-        f.querySelector('#ivGo').onclick=()=>{
-          this.closeSheet();
-          setTimeout(()=>{
-            if(window.ModSync){
-              ModSync.open();
-              setTimeout(()=>{const i=document.querySelector('#syCode');if(i){i.value=code;i.focus()}},420);
-            } else this.shareSheet();
-          },260);
-        };
-      });
+    if(!window.ModSync || !ModSync.configured()){
+      this.toast('이 앱에는 아직 동기화 서버가 연결되지 않았어요');
+      return;
+    }
+    /* 초대장을 먼저 열어보고, 누구로 들어오는지 보여준 뒤 확인받는다 */
+    ModSync.openInvite(code);
   },900);
 };
 
-/* ---------- PARENT MODE PIN GATE ---------- */
-App.toMaster=function(after){
-  if(this.state.pinOff){ this._setRole('master'); after&&after(); return; }
+/* ---------- PIN 게이트 ----------
+   어른 프로필로 넘어가거나 권한을 손대기 전에 한 번 막는다. */
+App.pinSheet=function(onPass,opts){
+  opts=opts||{};
+  if(this.state.pinOff){ onPass&&onPass(); return; }
   const pin=this.state.pin||'1234';
-  this.sheet('부모 모드로 전환',`
+  this.sheet(opts.title||'어른 확인',`
     <p style="margin:0 0 4px;font-size:13.5px;color:var(--ink2);font-weight:600;line-height:1.6">
-      보상과 할 일을 정하는 건 부모님만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.</p>
-    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${pin} 이에요</p>
+      ${opts.desc||'보상과 할 일을 정하는 건 어른만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.'}</p>
+    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${esc(pin)} 이에요</p>
     <div class="pinrow" id="pinDots">${[0,1,2,3].map(i=>`<i data-i="${i}"></i>`).join('')}</div>
     <div class="pinpad" id="pinPad">
       ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-k="${n}">${n}</button>`).join('')}
@@ -8756,23 +9658,76 @@ App.toMaster=function(after){
     const paint=()=>dots.forEach((d,i)=>d.classList.toggle('on',i<buf.length));
     b.querySelectorAll('#pinPad button').forEach(k=>k.onclick=()=>{
       const v=k.dataset.k;
-      if(v==='off'){ this.state.pinOff=true; this.save(); this.closeSheet(); this._setRole('master'); after&&after(); return; }
+      if(v==='off'){ this.state.pinOff=true; this.save(); this.closeSheet(); onPass&&onPass(); return; }
       if(v==='del'){ buf=buf.slice(0,-1); paint(); return; }
       if(buf.length>=4)return;
       buf+=v; paint(); this.haptic();
       if(buf.length===4){
         setTimeout(()=>{
-          if(buf===pin){ this.closeSheet(); this._setRole('master'); this.toast('🌷 부모 모드로 전환했어요'); after&&after(); }
+          if(buf===pin){ this.closeSheet(); onPass&&onPass(); }
           else { buf=''; paint(); const p=b.querySelector('#pinDots'); p.classList.add('shake'); setTimeout(()=>p.classList.remove('shake'),420); this.toast('PIN이 맞지 않아요'); }
         },160);
       }
     });
   });
 };
-App.toChild=function(){ this._setRole('child'); this.toast('🐣 아이 모드로 전환했어요'); };
-App._setRole=function(r){
-  this.state.role=r; this.viewMember='m1'; this.openCard=null; this._scrolled=false;
+/* 예전 이름 — 어른 프로필로 기기 주인을 바꾼다 */
+App.toMaster=function(after){
+  const adult=(this.state.members||[]).find(m=>m.role==='master')
+           || (this.state.members||[]).find(m=>m.role==='parent');
+  if(!adult){ this.toast('어른 프로필이 없어요'); return; }
+  this.pinSheet(()=>{
+    this.setMe(adult.id);
+    this.toast(adult.emoji+' '+adult.name+'(으)로 전환했어요');
+    after&&after();
+  });
+};
+App.toChild=function(){
+  const c=(this.state.members||[]).find(m=>m.role==='child');
+  if(c) this.setMe(c.id);
+  this.toast('🐣 '+((c&&c.name)||'아이')+'로 전환했어요');
+};
+
+/* 이 기기의 주인을 바꾼다.
+   그룹에 연결돼 있으면 이 기기는 초대로 정해진 사람이므로 바꾸지 않는다. */
+App.canSwitchDevice=function(){
+  return !(window.ModSync && ModSync.enabled && ModSync.enabled());
+};
+App.setMe=function(id){
+  if(!(this.state.members||[]).some(m=>m.id===id)) return false;
+  this.state.meId=id; this.viewMember=null; this.openCard=null; this._scrolled=false;
   this.save(); this.render(); this.renderDrawer&&this.renderDrawer();
+  return true;
+};
+/* 기기 주인 고르기 — 어른 프로필로 넘어갈 땐 PIN 을 한 번 묻는다 */
+App.openDeviceOwner=function(){
+  if(!this.canSwitchDevice()){
+    return this.toast('가족 그룹에 연결된 기기예요 · 주인은 바뀌지 않아요');
+  }
+  const cur=this.meId();
+  const body=`
+    <p style="margin:0 0 16px;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.7">
+      이 기기를 <b>지금 누가 쓰고 있는지</b> 골라 주세요.<br>
+      한 대를 같이 쓰는 가족을 위한 기능이에요.
+    </p>
+    <div class="dv-list">
+      ${this.state.members.map(m=>`
+        <button class="dv-opt ${m.id===cur?'on':''}" data-id="${esc(m.id)}">
+          <span class="dv-av">${esc(m.emoji)}</span>
+          <span class="dv-tx"><b>${esc(m.name)}</b><small>${esc(ROLE_LABEL[m.role]||'아이')}</small></span>
+          ${m.id===cur?'<span class="dv-now">지금</span>':''}
+        </button>`).join('')}
+    </div>`;
+  this.sheet('이 기기는 누가 쓰나요?',body,`<button class="btn line full" id="dvC">닫기</button>`,(b,f)=>{
+    f.querySelector('#dvC').onclick=()=>this.closeSheet();
+    b.querySelectorAll('.dv-opt').forEach(o=>o.onclick=()=>{
+      const id=o.dataset.id; if(id===cur) return this.closeSheet();
+      const m=this.member(id);
+      const go=()=>{ this.closeSheet(); this.setMe(id); this.toast(m.emoji+' '+m.name+'(으)로 전환했어요'); };
+      if(m.role==='child') go();
+      else this.pinSheet(go);          // 어른 프로필은 PIN
+    });
+  });
 };
 
 App.renderDrawer=function(){
@@ -8783,7 +9738,7 @@ App.renderDrawer=function(){
       <div class="brand">KUMA <b>routine</b></div>
       <div class="av">${esc(me.emoji)}</div>
       <div class="nm">${esc(me.name)}</div>
-      <div class="rl">${m?'부모 (마스터) · 설정 권한 있음':'아이 · 우리 가족 루틴'}</div>
+      <div class="rl">${esc(ROLE_LABEL[me.role]||'아이')}${m?' · 권한을 정할 수 있어요':(this.can('editOthers')?' · 가족 일정을 볼 수 있어요':' · 우리 가족 루틴')}</div>
     </div>
     <div class="dr-list">
       <button class="dr-item" data-go="time"><span class="em">🗓</span>오늘 일정</button>
@@ -8803,7 +9758,7 @@ App.renderDrawer=function(){
       ${window.ModSound?`<button class="dr-item" data-act="sound"><span class="em">🔊</span>소리 설정</button>`:''}
       ${window.ModTheme&&this.state.adFree?`<button class="dr-item" data-act="ads"><span class="em">📺</span>광고 다시 보기</button>`:''}
       <div class="hr"></div>
-      <button class="dr-item" data-act="role"><span class="em">${m?'🐣':'🌷'}</span>${m?'아이 모드로 보기':'부모 모드로 보기'}</button>
+      ${this.canSwitchDevice()?`<button class="dr-item" data-act="owner"><span class="em">🔄</span>이 기기 주인 바꾸기<span class="pill" style="background:var(--bg);color:var(--muted);margin-left:auto">${esc(me.emoji)} ${esc(me.name)}</span></button>`:''}
       <button class="dr-item" data-act="sim"><span class="em">⏱</span>시간 미리보기 ${this.simNow!==null?'<span class="pill" style="background:var(--orange-s);color:var(--orange);margin-left:auto">'+disp(this.simNow)+'</span>':''}</button>
       <div class="hr"></div>
       <button class="dr-item" data-act="tour"><span class="em">✨</span>앱 소개 다시 보기</button>
@@ -8815,7 +9770,7 @@ App.renderDrawer=function(){
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}
     const a=b.dataset.act;
-    if(a==='role'){this.closeSheet(); m?this.toChild():this.toMaster();}
+    if(a==='owner'){this.closeSheet(); setTimeout(()=>this.openDeviceOwner(),200);}
     if(a==='sim'){this.closeSheet();this.openSim();}
     if(a==='sync'){this.closeSheet();window.ModSync?ModSync.open():this.toast('동기화를 불러올 수 없어요');}
     if(a==='share'){this.closeSheet();this.shareSheet();}
@@ -8924,6 +9879,25 @@ App.openSim=function(){
     #phone.th-dark .td-day-chip{ border-color:#3A3A48!important; }
     #phone.th-dark .td-day-chip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
     #phone.th-dark .td-day-chip.on .td-day-label{ color:#B7AEFF!important; }
+    /* 기기 주인 고르기 */
+    .dv-list{ display:flex; flex-direction:column; gap:9px; }
+    .dv-opt{ display:flex; align-items:center; gap:12px; width:100%; padding:13px 15px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); background:transparent;
+      text-align:left; cursor:pointer; transition:.18s cubic-bezier(.22,1,.36,1); }
+    .dv-opt.on{ border-color:var(--indigo); background:var(--indigo-s); }
+    .dv-av{ width:38px; height:38px; border-radius:50%; background:var(--bg);
+      display:flex; align-items:center; justify-content:center; font-size:20px; flex:0 0 auto; }
+    .dv-tx{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .dv-tx b{ font-size:14.5px; font-weight:800; color:var(--ink); }
+    .dv-tx small{ font-size:11.5px; font-weight:700; color:var(--muted); }
+    .dv-opt.on .dv-tx b{ color:var(--indigo); }
+    .dv-now{ margin-left:auto; font-size:11px; font-weight:800; color:var(--indigo);
+      background:#fff; border-radius:11px; padding:4px 9px; }
+    #phone.th-dark .dv-opt{ border-color:#33333F!important; }
+    #phone.th-dark .dv-opt.on{ border-color:#7A6EEA!important; background:rgba(122,110,234,.16)!important; }
+    #phone.th-dark .dv-opt.on .dv-tx b{ color:#B7AEFF!important; }
+    #phone.th-dark .dv-now{ background:#2A2A36!important; color:#B7AEFF!important; }
+
     #phone.th-dark .pchip{ border-color:#33333F!important; }
     #phone.th-dark .pchip.on{ background:rgba(122,110,234,.16)!important; border-color:#7A6EEA!important; color:#B7AEFF!important; }
     #phone.th-dark .tab.on .tico{ background:rgba(122,110,234,.16)!important; box-shadow:inset 0 0 0 1.7px #7A6EEA!important; }
