@@ -89,6 +89,14 @@ const firebaseConfig = {
 | `FIREBASE_API_KEY` | `AIzaSy...` |
 | `FIREBASE_DB_URL` | `https://xxx.firebasedatabase.app` |
 
+> **반드시 `Repository secrets` 여야 합니다.**
+> Environment secrets 나 Dependabot secrets 에 넣으면 이 워크플로에서 보이지 않습니다.
+
+> **시크릿을 나중에 등록했다면 워크플로를 한 번 다시 돌려야 합니다.**
+> 이미 끝난 빌드에는 소급 적용되지 않습니다.
+> **Actions → Deploy to GitHub Pages → Run workflow** 를 누르거나, 아무 커밋이나 푸시하세요.
+> 주입이 안 된 채로 배포되면 이제 빌드가 **실패**합니다(`verify-config`). 조용히 넘어가지 않습니다.
+
 ## 7. Pages 배포 방식 바꾸기
 
 기존의 "브랜치에서 바로 서빙" 방식은 저장소 파일을 그대로 내보내므로

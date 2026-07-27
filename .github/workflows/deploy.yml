@@ -34,10 +34,13 @@ jobs:
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_DB_URL:  ${{ secrets.FIREBASE_DB_URL }}
-        run: node src/inject-config.js
+        run: node src/inject-config.js --require
 
       - name: 빌드
         run: node src/build.js
+
+      - name: 주입 확인 (키 값은 출력하지 않는다)
+        run: node src/verify-config.js
 
       - name: 배포 대상만 추리기
         run: |
