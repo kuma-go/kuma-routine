@@ -178,45 +178,47 @@ window.ModNotify = {
     const vm = App.vm();
     const items = [];
 
-    // 1) 일정 시작 알림
-    (App.sched(vm)[App.today] || []).forEach(ev => {
+    // 1) 일정 시작 알림 — 알림은 항상 "이번 주" 기준(w=0)
+    App.evs(App.today, 0, vm).forEach(ev => {
       if(!ev.alarm || !App.canSee(ev)) return;
       const t = toMin(ev.s) - (cfg.lead || 10);
       items.push({
         id:`nt:${vm}:sched:${ev.id}`, time:t, icon:'🔔', tone:'info',
         title:`${cfg.lead}분 후 ${esc(ev.t)} 시작`,
         body:`${this._ampm(toMin(ev.s))} ${disp(toMin(ev.s))} 시작`,
-        toggleType:'sched', schedId:ev.id, schedDay:App.today
+        toggleType:'sched', schedId:ev.id, schedDay:App.today, schedWeek:0
       });
     });
 
     // 2) 준비물 알림
     if(cfg.prepLead === 'night'){
       const tmr = (App.today + 1) % 7;
-      (App.sched(vm)[tmr] || []).forEach(ev => {
+      // 오늘이 토요일이면 "내일"은 다음 주 일요일이 된다
+      const tmrW = App.today === 6 ? 1 : 0;
+      App.evs(tmr, tmrW, vm).forEach(ev => {
         if(!ev.alarm || !ev.items || !ev.items.length || !App.canSee(ev)) return;
         items.push({
           id:`nt:${vm}:prep:${ev.id}`, time:21 * 60, icon:'🎒', tone:'warn',
           title:`내일 ${esc(ev.t)} 준비물`,
           body:ev.items.join(', '),
-          toggleType:'sched', schedId:ev.id, schedDay:tmr
+          toggleType:'sched', schedId:ev.id, schedDay:tmr, schedWeek:tmrW
         });
       });
     } else if(cfg.prepLead === 'morning'){
-      (App.sched(vm)[App.today] || []).forEach(ev => {
+      App.evs(App.today, 0, vm).forEach(ev => {
         if(!ev.alarm || !ev.items || !ev.items.length || !App.canSee(ev)) return;
         items.push({
           id:`nt:${vm}:prepm:${ev.id}`, time:7 * 60, icon:'🎒', tone:'warn',
           title:`오늘 ${esc(ev.t)} 준비물`,
           body:ev.items.join(', '),
-          toggleType:'sched', schedId:ev.id, schedDay:App.today
+          toggleType:'sched', schedId:ev.id, schedDay:App.today, schedWeek:0
         });
       });
     }
 
     // 3) 할 일 알림
     if(cfg.todoDaily){
-      const undone = App.todosOf(App.today).filter(t => !t.done && App.canSee(t));
+      const undone = App.todosOf(App.today, 0).filter(t => !t.done && App.canSee(t));
       if(undone.length){
         items.push({
           id:`nt:${vm}:todo:${App.today}`, time:8 * 60 + 30, icon:'✅', tone:'good',
@@ -286,6 +288,7 @@ window.ModNotify = {
       ? `<span class="nt-item-sent">보냄</span>`
       : `<button type="button" class="nt-item-toggle on" data-toggle-type="${it.toggleType}"
            data-sched-id="${it.schedId || ''}" data-sched-day="${it.schedDay != null ? it.schedDay : ''}"
+           data-sched-week="${it.schedWeek != null ? it.schedWeek : 0}"
            aria-label="알림 끄기"></button>`;
     return `
       <div class="nt-item ${past ? 'past' : ''}">
@@ -313,8 +316,9 @@ window.ModNotify = {
           App.toast('할 일 알림을 껐어요');
         } else {
           const day = +btn.dataset.schedDay;
+          const week = +btn.dataset.schedWeek || 0;
           const id = btn.dataset.schedId;
-          const list = App.sched()[day] || [];
+          const list = App.evs(day, week);
           const ev = list.find(x => x.id === id);
           if(ev){
             ev.alarm = false;

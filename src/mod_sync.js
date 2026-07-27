@@ -596,7 +596,9 @@ window.ModSync = {
       members: s.members, schedules: s.schedules, todos: s.todos,
       reward: s.reward, coins: s.coins, doneEv: s.doneEv || {},
       badges: s.badges || {},
-      groupOpts: s.groupOpts || {approval:false}   // 그룹 정책 — 마스터가 정한다
+      groupOpts: s.groupOpts || {approval:false},  // 그룹 정책 — 마스터가 정한다
+      weekAnchor: s.weekAnchor || null,            // 이번 주의 기준선 — 기기마다 다르면 안 된다
+      hiddenNext: s.hiddenNext || {}               // 다음 주에서만 뺀 반복 일정
     };
   },
 
@@ -617,6 +619,8 @@ window.ModSync = {
     if(st.doneEv) s.doneEv = st.doneEv;
     if(st.badges) s.badges = st.badges;
     if(st.groupOpts) s.groupOpts = st.groupOpts;
+    if(st.weekAnchor) s.weekAnchor = st.weekAnchor;
+    if(st.hiddenNext) s.hiddenNext = st.hiddenNext;
 
     if(keepMe){
       /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */

@@ -92,7 +92,7 @@ window.ModBadge = {
       { id:'day_all_done', emoji:'🌟', name:'오늘 다 했어요', desc:'하루의 할 일을 모두 끝냈어요',
         test: () => {
           for(let d = 0; d < 7; d++){
-            const list = App.todosOf(d).filter(t => App.canSee(t));
+            const list = App.todosOf(d, 0).filter(t => App.canSee(t));
             if(list.length > 0 && list.every(t => t.done)) return true;
           }
           return false;
@@ -102,7 +102,7 @@ window.ModBadge = {
         test: () => {
           let count = 0;
           for(let d = 0; d < 7; d++){
-            const list = App.todosOf(d).filter(t => App.canSee(t));
+            const list = App.todosOf(d, 0).filter(t => App.canSee(t));
             if(list.length > 0 && list.every(t => t.done)) count++;
           }
           return count >= 3;

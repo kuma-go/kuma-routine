@@ -431,9 +431,31 @@ textarea.inp{height:78px;padding:12px 13px;resize:none;line-height:1.5}
 }
 .slide-l{animation:slideInL .34s cubic-bezier(.22,1,.36,1) both}
 .slide-r{animation:slideInR .34s cubic-bezier(.22,1,.36,1) both}
+/* 더 갈 곳이 없을 때 살짝 튕긴다 */
+@keyframes bncL{0%{transform:translateX(0)}45%{transform:translateX(-14px)}100%{transform:translateX(0)}}
+@keyframes bncR{0%{transform:translateX(0)}45%{transform:translateX(14px)}100%{transform:translateX(0)}}
+.bnc-l{animation:bncL .28s cubic-bezier(.22,1,.36,1) both}
+.bnc-r{animation:bncR .28s cubic-bezier(.22,1,.36,1) both}
 @media (prefers-reduced-motion:reduce){
-  .slide-l,.slide-r{animation:none}
+  .slide-l,.slide-r,.bnc-l,.bnc-r{animation:none}
 }
+
+/* 다음 주를 보고 있을 때의 표시 */
+.wkpill{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:13px;
+  background:var(--indigo-s);color:var(--indigo);font-size:11px;font-weight:800;letter-spacing:.01em;
+  border:1.4px solid var(--indigo);
+}
+.wkpill.now{background:transparent;color:var(--muted);border-color:var(--line)}
+.wknav{display:flex;gap:7px;align-items:center;flex:0 0 auto}
+.wknav button{
+  padding:6px 12px;border-radius:13px;border:1.5px solid var(--line);background:transparent;
+  font-size:11.5px;font-weight:800;color:var(--muted);cursor:pointer;
+  transition:.18s cubic-bezier(.22,1,.36,1);white-space:nowrap;
+}
+.wknav button.on{border-color:var(--indigo);background:var(--indigo-s);color:var(--indigo)}
+#phone.th-dark .wknav button{border-color:#33333F}
+#phone.th-dark .wknav button.on{border-color:#7A6EEA;background:rgba(122,110,234,.16);color:#B7AEFF}
 
 /* ========== SCHEDULE DONE ========== */
 .card.evdone{filter:saturate(.55) brightness(1.04)}
@@ -824,10 +846,83 @@ const App={
     return (v&&(this.state.members||[]).some(m=>m.id===v))?v:this.meId();
   },
   sched(id){ const k=id||this.vm(); return (this.state.schedules[k]=this.state.schedules[k]||{}); },
-  todosOf(day){ const k=this.vm(); return this.state.todos.filter(t=>(t.for||this.defaultTodoOwner())===k&&t.day===day); },
+
+  /* ── 이번 주 / 다음 주 ─────────────────────────────────────
+     요일(0~6)을 키로 쓰던 구조를 그대로 두고, 다음 주는 'n0'~'n6' 에 담는다.
+     매주 반복하는 일정은 이번 주 자리에만 저장하고 다음 주에는 겹쳐 보여준다.
+     한 주가 지나면 rollWeeks() 가 다음 주를 이번 주 자리로 내린다. */
+  week:0,
+  dk(day,w){
+    const d=(day===undefined?this.day:day);
+    const ww=(w===undefined?this.week:w);
+    return ww ? ('n'+d) : String(d);
+  },
+  hideKey(day,id,mid){ return (mid||this.vm())+'|'+(day===undefined?this.day:day)+'|'+id; },
+  isHiddenNext(day,id,mid){ return !!(this.state.hiddenNext||{})[this.hideKey(day,id,mid)]; },
+
+  /* 화면에 그릴 목록 — 다음 주에는 반복 일정을 얹어서 돌려준다 */
+  evs(day,w,mid){
+    const d=(day===undefined?this.day:day);
+    const ww=(w===undefined?this.week:w);
+    const S=this.sched(mid);
+    const own=S[this.dk(d,ww)]||[];
+    if(!ww) return own;
+    const rep=(S[String(d)]||[]).filter(e=>e.repeat&&!this.isHiddenNext(d,e.id,mid));
+    return rep.concat(own);
+  },
+  /* 쓰기용 자리 — 지금 보고 있는 주의 바구니 */
+  bucket(day,w,mid){
+    const S=this.sched(mid), k=this.dk(day,w);
+    return (S[k]=S[k]||[]);
+  },
+  /* 이 일정이 지금 주에서 "빌려온" 반복 일정인가 (다음 주에서 원본을 건드리게 됨) */
+  isBorrowed(id,day,w){
+    const ww=(w===undefined?this.week:w);
+    if(!ww) return false;
+    return !((this.sched()[this.dk(day,ww)]||[]).some(e=>e.id===id));
+  },
+
+  todosOf(day,w){
+    const k=this.vm(), ww=(w===undefined?this.week:w);
+    return this.state.todos.filter(t=>(t.for||this.defaultTodoOwner())===k&&t.day===day&&(t.w||0)===ww);
+  },
   defaultTodoOwner(){ const c=(this.state.members||[]).find(m=>m.role==='child'); return c?c.id:'m1'; },
   /* 코인은 아이의 할 일에만 걸 수 있고, 걸 권한이 있어야 한다 */
   canSetCoin(){ return this.can('setCoin')&&this.roleOf(this.vm())==='child'; },
+
+  /* ── 주 넘김 ────────────────────────────────────────────
+     한 주가 지나면 "다음 주"에 넣어둔 일정이 "이번 주"가 되어야 한다.
+     기준선(weekAnchor)은 동기화되므로 여러 기기가 같은 결과를 낸다. */
+  mondayOf(dt){ const x=new Date(dt); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; },
+  isoDay(dt){ const p=n=>String(n).padStart(2,'0');
+    return dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate()); },
+  rollWeeks(){
+    const s=this.state, mon=this.mondayOf(new Date()), cur=this.isoDay(mon);
+    if(!s.weekAnchor){ s.weekAnchor=cur; return 0; }
+    if(s.weekAnchor===cur) return 0;
+    const prev=new Date(s.weekAnchor+'T00:00:00');
+    const diff=Math.round((mon-prev)/604800000);
+
+    /* 지난 주 기록은 리포트를 위해 한 주치만 남긴다 */
+    s.archive={at:s.weekAnchor,todos:JSON.parse(JSON.stringify(s.todos||[])),doneEv:s.doneEv||{}};
+
+    Object.keys(s.schedules||{}).forEach(mid=>{
+      const map=s.schedules[mid]||{};
+      for(let d=0;d<7;d++){
+        const keep=(map[String(d)]||[]).filter(e=>e.repeat);   // 반복만 살아남는다
+        const next=(diff===1)?(map['n'+d]||[]):[];             // 두 주 이상 지났으면 다음 주도 옛것
+        map[String(d)]=keep.concat(next);
+        delete map['n'+d];
+      }
+    });
+    s.todos=(diff===1)
+      ? (s.todos||[]).filter(t=>(t.w||0)===1).map(t=>{ t.w=0; t.done=false; return t; })
+      : [];
+    s.doneEv={}; s.hiddenNext={};
+    s.weekAnchor=cur;
+    this.week=0;
+    return diff;
+  },
 
   /* ── 상태 정합성 보정 ───────────────────────────────────
      예전 저장본(role 토글 방식)에서 올라오는 경우와
@@ -976,6 +1071,7 @@ const App={
   save(){ try{localStorage.setItem('haruk',JSON.stringify(this.state))}catch(e){} },
   load(){
     try{const r=localStorage.getItem('haruk'); if(r)this.state=Object.assign(this.state,JSON.parse(r));}catch(e){}
+    this.rollWeeks();
     this.migrate();
   },
 
@@ -1006,15 +1102,16 @@ const App={
     const p=document.getElementById('btnToday');
     const isTime=this.tab==='time';
     if(isTime&&this.view==='week'){
-      w.innerHTML=`<div class="daytitle">이번 주 <span class="en">WEEK</span></div>
+      w.innerHTML=`<div class="daytitle">${this.week?'다음 주':'이번 주'} <span class="en">WEEK</span></div>
         <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:-2px">${esc(this.member().name)}의 한 주</div>`;
-      w.onclick=null; p.style.display='none';
+      p.style.display=''; p.textContent=this.week?'이번 주':'TODAY';
+      p.classList.toggle('ghost',!!this.week);
+      w.onclick=null; if(!this.week) p.style.display='none';
       document.getElementById('btnAdd').style.visibility='visible';
       this.renderStrip(); return;
     }
     if(isTime){
-      const S=this.sched();
-      const dot=i=>`<button data-d="${i}" class="${(S[i]||[]).length?'has':''} ${i===this.today?'today':''}" aria-label="${DAYS[i][0]}요일"></button>`;
+      const dot=i=>`<button data-d="${i}" class="${this.evs(i).length?'has':''} ${!this.week&&i===this.today?'today':''}" aria-label="${DAYS[i][0]}요일"></button>`;
       const pre=DAYS.map((_,i)=>i).filter(i=>i<this.day).map(dot).join('');
       const post=DAYS.map((_,i)=>i).filter(i=>i>this.day).map(dot).join('');
       w.innerHTML=`<div class="daybar">
@@ -1026,8 +1123,10 @@ const App={
       w.querySelectorAll('.dots button').forEach(b=>b.onclick=e=>{e.stopPropagation();this.setDay(+b.dataset.d);this.haptic()});
       w.onclick=null;
       p.style.display='';
-      p.classList.toggle('ghost',this.day!==this.today);
-      p.textContent=this.day===this.today?'TODAY':'오늘로';
+      const onToday=!this.week&&this.day===this.today;
+      p.style.display='';
+      p.classList.toggle('ghost',!onToday);
+      p.textContent=onToday?'TODAY':'오늘로';
     }else{
       const T={todo:'할 일',reward:'보상',family:'가족'};
       const S={todo:'오늘 목표를 하나씩',reward:'모은 코인으로',family:'우리 가족 연결'};
@@ -1052,6 +1151,10 @@ const App={
     const segHTML=seg?`<div class="vseg" id="vseg">
       <button data-v="day" class="${this.view==='day'?'on':''}">일</button>
       <button data-v="week" class="${this.view==='week'?'on':''}">주</button></div>`:'';
+    /* 다음 주를 보고 있을 때만 알린다 — 평소에는 아무것도 늘리지 않는다.
+       할 일 탭은 목록 안에 자체 주 전환이 있으므로 여기서는 그리지 않는다. */
+    const weekHTML=(this.week&&this.tab!=='todo'&&!(this.tab==='time'&&this.view==='week'))
+      ? `<button class="wkpill" id="wkBack">다음 주 · 이번 주로</button>` : '';
     let progHTML='';
     if(this.tab==='time'&&this.view==='day'){
       const pr=this.dayProgress();
@@ -1065,11 +1168,15 @@ const App={
           <span class="pav">${esc(m.emoji)}</span>${esc(m.name)}${m.id===this.meId()?'<span class="me">나</span>':''}</button>`).join('')
         :`<span class="plabel solo">${esc(this.member().emoji)} ${esc(this.member().name)}의 일정</span>`}</div>`;
     /* 칩이 셋 이상이면 좁은 폭에서 서로를 밀어낸다 — 줄을 나눈다 */
-    const twoRow=chips&&this.state.members.length>2&&(progHTML||segHTML);
+    /* 칩과 나머지가 한 줄에서 서로를 밀어내면 줄을 나눈다 */
+    const extras=progHTML||segHTML||weekHTML;
+    const twoRow=!!(chips&&extras&&(this.state.members.length>2||this.week));
     s.classList.toggle('two',!!twoRow);
     s.innerHTML=twoRow
-      ? `<div class="prow">${scrollHTML}</div><div class="prow sub">${progHTML}${segHTML}</div>`
-      : `${scrollHTML}${progHTML}${segHTML}`;
+      ? `<div class="prow">${scrollHTML}</div><div class="prow sub">${weekHTML}${progHTML}${segHTML}</div>`
+      : `${scrollHTML}${weekHTML}${progHTML}${segHTML}`;
+    const wb=s.querySelector('#wkBack');
+    if(wb) wb.onclick=()=>{ this.goWeek(0); this.haptic(); };
     s.querySelectorAll('#vseg button').forEach(b=>b.onclick=()=>{
       if(this.view===b.dataset.v)return;
       this.view=b.dataset.v; this.openCard=null; this._scrolled=false; this.haptic(); this.render();
@@ -1136,7 +1243,7 @@ const App={
   range(){
     let s=DAY_S,e=DAY_E;
     if(this.day===this.today){const n=this.nowMin();s=Math.min(s,Math.floor(n/60)*60);e=Math.max(e,Math.ceil((n+30)/60)*60);}
-    const evs=this.sched()[this.day]||[];
+    const evs=this.evs();
     evs.forEach(v=>{s=Math.min(s,toMin(v.s));e=Math.max(e,toMin(v.e));});
     return [s,e];
   },
@@ -1144,7 +1251,7 @@ const App={
 
   buildSlots(){
     const [S,E]=this.range();
-    const evs=(this.sched()[this.day]||[]).slice().sort((a,b)=>toMin(a.s)-toMin(b.s)||toMin(a.e)-toMin(b.e));
+    const evs=this.evs().slice().sort((a,b)=>toMin(a.s)-toMin(b.s)||toMin(a.e)-toMin(b.e));
 
     /* 1) 겹치는 일정을 클러스터로 묶기 */
     const clusters=[];
@@ -1215,7 +1322,7 @@ const App={
       return this.cardHTML(sl.ev,sl.s,sl.e,this.cardH(durH),i,'','');
     }).join('');
 
-    const none=!(this.sched()[this.day]||[]).length;
+    const none=!this.evs().length;
     root.innerHTML=`<div class="tt">
       <div class="tt-gutter">${none?'':`<div class="ampm" id="ampm"><div class="hair"></div><b class="am">오전(AM)</b><b class="pm">오후(PM)</b></div>`}</div>
       <div class="slots" id="slots">${html||''}</div>
@@ -1287,7 +1394,7 @@ const App={
 
   /* 좁은 컬럼 카드용 상세 시트 */
   detailSheet(id){
-    const ev=(this.sched()[this.day]||[]).find(x=>x.id===id);
+    const ev=this.evs().find(x=>x.id===id);
     if(!ev||!this.canSee(ev)){this.toast('🔒 작성자만 볼 수 있는 일정이에요');return;}
     const col=CFILL(ev.c), items=ev.items||[];
     const body=`
@@ -1353,7 +1460,7 @@ const App={
         const on=this.toggleDone(id);
         this.haptic();
         if(window.ModSound)ModSound.play(on?'check':'tap');
-        const ev=(this.sched()[this.day]||[]).find(x=>x.id===id);
+        const ev=this.evs().find(x=>x.id===id);
         this.renderTime();
         if(on){
           const pr=this.dayProgress();
@@ -1370,7 +1477,7 @@ const App={
     root.querySelectorAll('[data-bell]').forEach(b=>{
       b.addEventListener('click',e=>{
         e.stopPropagation();
-        const ev=(this.sched()[this.day]||[]).find(x=>x.id===b.dataset.bell); if(!ev)return;
+        const ev=this.evs().find(x=>x.id===b.dataset.bell); if(!ev)return;
         ev.alarm=!ev.alarm; this.save(); this.haptic(); this.renderTime();
         this.toast(ev.alarm?`🔔 ${esc(ev.t)} 알림을 켰어요`:`🔕 ${esc(ev.t)} 알림을 껐어요`);
       });
@@ -1386,7 +1493,7 @@ const App={
         const on=this.togglePack(id,b.dataset.it);
         this.haptic();
         b.classList.toggle('ok',on);
-        const ev=(this.sched()[this.day]||[]).find(x=>x.id===id);
+        const ev=this.evs().find(x=>x.id===id);
         if(!ev)return;
         const items=ev.items||[], n=items.filter(x=>this.isPacked(id,x)).length, all=n===items.length;
         const card=b.closest('.card');
@@ -1407,14 +1514,14 @@ const App={
 
   /* ---------- WEEK VIEW ---------- */
   weekRange(){
-    const S=this.sched(); let a=7*60,b=22*60;
-    for(let d=0;d<7;d++)(S[d]||[]).forEach(v=>{if(this.canSee(v)||true){a=Math.min(a,toMin(v.s));b=Math.max(b,toMin(v.e));}});
+    let a=7*60,b=22*60;
+    for(let d=0;d<7;d++)this.evs(d).forEach(v=>{a=Math.min(a,toMin(v.s));b=Math.max(b,toMin(v.e));});
     return [Math.floor(a/60)*60,Math.ceil(b/60)*60];
   },
 
   renderWeek(){
     const root=document.getElementById('sc-time');
-    const S=this.sched(), [A,B]=this.weekRange(), span=B-A;
+    const [A,B]=this.weekRange(), span=B-A;
     const H=Math.max(360,Math.min(520,(span/60)*30));
     const y=m=>((m-A)/span)*H;
 
@@ -1429,7 +1536,7 @@ const App={
     let total=0,alarms=0,prep=0;
     const MAXV=6;   /* 한 요일에 표시할 최대 개수 */
     const cols=DAYS.map((d,i)=>{
-      const all=(S[i]||[]).slice().sort((a,b)=>toMin(a.s)-toMin(b.s));
+      const all=this.evs(i).slice().sort((a,b)=>toMin(a.s)-toMin(b.s));
       all.forEach(ev=>{total++; if(ev.alarm)alarms++; if(ev.items&&ev.items.length)prep++;});
       const evs=all.slice(0,MAXV), hidden=all.length-evs.length;
       const cells=evs.map(ev=>{
@@ -1442,14 +1549,14 @@ const App={
           ${ev.repeat?'<i class="rep-dot"></i>':''}<span class="wt">${disp(toMin(ev.s))}</span>${ev.secret?'🤫':''}${esc(ev.t)}</button>`;
       }).join('');
       const more=hidden>0?`<button class="wk-more" data-col="${i}">+${hidden}개</button>`:'';
-      return `<div class="wk-col ${i===this.today?'today':''}" data-col="${i}">${cells}${more}</div>`;
+      return `<div class="wk-col ${!this.week&&i===this.today?'today':''}" data-col="${i}">${cells}${more}</div>`;
     }).join('');
 
     const nowY=this.today>=0?y(this.nowMin()):-1;
     const showNow=this.nowMin()>=A&&this.nowMin()<=B;
 
     root.innerHTML=`<div class="wk">
-      <div class="wk-head">${DAYS.map((d,i)=>`<div class="wcol ${i===this.today?'today':''} ${i===0?'sun':''}"><div class="wd">${d[0]}</div><div class="wn">${d[1]}</div></div>`).join('')}</div>
+      <div class="wk-head">${DAYS.map((d,i)=>`<div class="wcol ${!this.week&&i===this.today?'today':''} ${i===0?'sun':''}"><div class="wd">${d[0]}</div><div class="wn">${d[1]}</div></div>`).join('')}</div>
       <div class="wk-grid" style="height:${H+12}px">
         <div class="wk-hours">${hours.join('')}</div>
         ${cols}
@@ -1483,7 +1590,7 @@ const App={
   snap(m){ return Math.round(m/5)*5; },
 
   beginDrag(card,id,mode,startY){
-    const list=this.sched()[this.day]||[];
+    const list=this.evs();
     const ev=list.find(x=>x.id===id); if(!ev)return;
     const slots=this.buildSlots();
     const [S,E]=this.range();
@@ -1613,7 +1720,7 @@ const App={
   },
   ctxMenu(anchor,id){
     this.closeCtx();
-    const list=this.sched()[this.day]||[];
+    const list=this.evs();
     const ev=list.find(x=>x.id===id); if(!ev||!this.canSee(ev))return;
     const el=document.createElement('div');
     el.className='ctx'; el.id='ctxm';
@@ -1645,7 +1752,17 @@ const App={
       if(a==='alarm'){ev.alarm=!ev.alarm;this.save();this.render();return this.toast(ev.alarm?'🔔 알림을 켰어요':'🔕 알림을 껐어요');}
       if(a==='rep'){ev.repeat=!ev.repeat;this.save();this.render();return this.toast(ev.repeat?`🔁 매주 ${DAYS[this.day][0]}요일에 반복돼요`:'반복을 껐어요');}
       if(a==='secret'){ev.secret=!ev.secret;ev.owner=this.meId();this.save();this.render();return this.toast(ev.secret?'🤫 나만 보는 일정이 됐어요':'👀 가족이 볼 수 있어요');}
-      if(a==='del'){this.sched()[this.day]=list.filter(x=>x.id!==id);this.save();this.openCard=null;this.render();return this.toast('일정을 삭제했어요');}
+      if(a==='del'){
+        /* 다음 주에서 반복 일정을 지우면 그 주에서만 뺀다 — 원본은 이번 주에 남는다 */
+        if(this.isBorrowed(id,this.day)){
+          (this.state.hiddenNext=this.state.hiddenNext||{})[this.hideKey(this.day,id)]=1;
+          this.save(); this.openCard=null; this.render();
+          return this.toast('다음 주에서만 뺐어요 · 이번 주는 그대로예요');
+        }
+        const k=this.dk();
+        this.sched()[k]=(this.sched()[k]||[]).filter(x=>x.id!==id);
+        this.save();this.openCard=null;this.render();return this.toast('일정을 삭제했어요');
+      }
       if(a==='dup')return this.dupSheet(ev);
     });
   },
@@ -1661,8 +1778,7 @@ const App={
         f.querySelector('#dpOk').onclick=()=>{
           const ds=[...b.querySelectorAll('.daychip.on')].map(x=>+x.dataset.d);
           if(!ds.length)return this.toast('요일을 골라주세요');
-          const S=this.sched();
-          ds.forEach(d=>{(S[d]=S[d]||[]).push(Object.assign({},ev,{id:uid()}))});
+          ds.forEach(d=>{ this.bucket(d).push(Object.assign({},ev,{id:uid(),repeat:false})); });
           this.save();this.closeSheet();this.render();this.toast(`${ds.length}개 요일에 복제했어요 ✨`);
         };
       });
@@ -1678,7 +1794,7 @@ const App={
   },
 
   /* ---------- SCHEDULE DONE ---------- */
-  doneKey(id){ return `${this.vm()}|${this.day}|${id}` },
+  doneKey(id){ return `${this.vm()}|${this.week?'n':''}${this.day}|${id}` },
   isDone(id){ return !!(this.state.doneEv||{})[this.doneKey(id)] },
   toggleDone(id){
     this.state.doneEv=this.state.doneEv||{};
@@ -1689,7 +1805,7 @@ const App={
     return !!this.state.doneEv[k];
   },
   dayProgress(){
-    const evs=(this.sched()[this.day]||[]).filter(e=>this.canSee(e));
+    const evs=this.evs().filter(e=>this.canSee(e));
     return {done:evs.filter(e=>this.isDone(e.id)).length, total:evs.length};
   },
 
@@ -1738,17 +1854,44 @@ const App={
     if(this.day===this.today) this.placeOverlays(this.buildSlots());
   },
 
-  setDay(d,dir){
-    const prev=this.day;
-    this.day=(d+7)%7; this.openCard=null; this._scrolled=false;
-    if(dir===undefined&&prev!==this.day){
+  setDay(d,dir,w){
+    const prev=this.day, prevW=this.week;
+    this.day=((d%7)+7)%7;
+    if(w!==undefined) this.week=w?1:0;
+    this.openCard=null; this._scrolled=false;
+    if(dir===undefined&&(prev!==this.day||prevW!==this.week)){
       /* 요일 간 최단 방향으로 자연스럽게 */
-      const diff=(this.day-prev+7)%7;
-      dir=diff===0?0:(diff<=3?1:-1);
+      const diff=((this.week*7+this.day)-(prevW*7+prev));
+      dir=diff===0?0:(Math.abs(diff)<=3?(diff>0?1:-1):(diff>0?-1:1));
     }
     this.render();
     if(dir)this.slideDay(dir);
-    if(this.day===this.today)setTimeout(()=>this.scrollToNow(),80);
+    if(!this.week&&this.day===this.today)setTimeout(()=>this.scrollToNow(),80);
+  },
+
+  /* 좌우로 한 칸 — 주의 끝에서 한 번 더 넘기면 다음 주로 이어진다.
+     이번 주 첫날 앞과 다음 주 마지막 날 뒤에서는 살짝 튕긴다. */
+  stepDay(dir){
+    const slot=this.week*7+this.day+dir;
+    if(slot<0||slot>13){ this.bounceEdge(dir); return; }
+    const w=Math.floor(slot/7), d=slot%7;
+    const crossed=(w!==this.week);
+    this.setDay(d,dir,w);
+    if(crossed) this.toast(w?'다음 주로 넘어왔어요 →':'← 이번 주로 돌아왔어요');
+  },
+  bounceEdge(dir){
+    const root=document.getElementById('sc-'+this.tab);
+    const el=root&&(root.querySelector('.tt')||root.querySelector('.wk')||root.firstElementChild);
+    if(!el)return;
+    el.classList.remove('bnc-l','bnc-r'); void el.offsetWidth;
+    el.classList.add(dir>0?'bnc-l':'bnc-r');
+    el.addEventListener('animationend',()=>el.classList.remove('bnc-l','bnc-r'),{once:true});
+    this.haptic();
+  },
+  goWeek(w){
+    if(this.week===(w?1:0))return;
+    const dir=w?1:-1;
+    this.setDay(this.day,dir,w);
   },
 
   /* 요일 전환 슬라이드 — dir 1이면 다음날(왼쪽으로), -1이면 이전날 */
@@ -2312,8 +2455,13 @@ window.ModTodo = {
     .td-quickadd-inp:focus{ outline:none; }
 
     /* ---- 리스트 ---- */
-    .td-list-head{ display:flex; justify-content:flex-end; margin-bottom:8px; }
-    .td-add-btn{ font-size:12.5px; padding:8px 14px; height:auto; min-height:36px; }
+    .td-list-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+    .td-add-btn{ font-size:12.5px; padding:8px 14px; height:auto; min-height:36px; flex:0 0 auto; }
+    /* 주 전환은 코어의 .wknav 모양을 그대로 쓰고, 높이만 이 줄에 맞춘다 */
+    .td-weeknav{ flex:0 0 auto; }
+    .td-weeknav button{ min-height:36px; }
+    .td-weekhint{ font-size:12px; font-weight:700; color:var(--indigo); margin:-4px 0 12px; }
+    #phone.th-dark .td-weekhint{ color:#B7AEFF; }
     .td-group-divider{
       display:flex; align-items:center; gap:8px; margin:14px 0 8px; color:var(--muted);
       font-size:11.5px; font-weight:800;
@@ -2442,10 +2590,20 @@ window.ModTodo = {
 
   _celebrated: {},
 
+  /* '오늘' / '수요일' / '다음 주 수요일' — 지금 보고 있는 칸을 한마디로 */
+  _scopeLabel(w, day){
+    const d = (day == null) ? App.day : day;
+    const ww = (w == null) ? App.week : (w ? 1 : 0);
+    if(ww) return `다음 주 ${DAYS[d][0]}요일`;
+    if(d === App.today) return '오늘';
+    return `${DAYS[d][0]}요일`;
+  },
+
   render(root){
     const day = App.day;
+    const week = App.week ? 1 : 0;
     const isChildView = App.roleOf(App.vm()) === 'child';
-    const list = App.todosOf(day);
+    const list = App.todosOf(day);   // 지금 보고 있는 주 기준
     const visible = list.filter(t => App.canSee(t));
     const totalCount = visible.length;
     const doneCount = visible.filter(t => t.done).length;
@@ -2460,14 +2618,18 @@ window.ModTodo = {
     root.innerHTML = `
       <div class="td-wrap">
         ${this._daysStripHtml()}
-        ${this._summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView })}
-        ${App.canSetCoin() ? this._quickAddHtml() : ''}
+        ${this._summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView, week })}
+        ${App.canSetCoin() ? this._quickAddHtml(week) : ''}
         <div class="td-list">
           <div class="td-list-head">
+            ${this._weekNavHtml(week)}
             <button type="button" class="btn ghost td-add-btn">+ 새 할 일 추가</button>
           </div>
           ${list.length === 0
-            ? `<div class="empty-note"><div class="big">🍃</div>오늘은 할 일이 없어요!</div>`
+            ? `<div class="empty-note"><div class="big">${week ? '🌱' : '🍃'}</div>${
+                week ? '다음 주 할 일을 미리 적어둘 수 있어요'
+                     : (day === App.today ? '오늘은 할 일이 없어요!' : `${DAYS[day][0]}요일은 할 일이 없어요`)
+              }</div>`
             : `
               ${incomplete.map(t => this._itemHtml(t)).join('')}
               ${completed.length > 0
@@ -2486,6 +2648,8 @@ window.ModTodo = {
     const canSetCoin = App.canSetCoin();
     const coinPresets = [5, 10, 15, 20, 25, 30];
     const day = editing ? editing.day : App.day;
+    /* 수정할 때는 그 할 일이 들어 있는 주, 새로 만들 때는 지금 보고 있는 주 */
+    const week = editing ? ((editing.w || 0) ? 1 : 0) : (App.week ? 1 : 0);
     const coin = editing ? (editing.coin || 0) : 0;
     const secret = editing ? !!editing.secret : false;
     const text = editing ? editing.text : '';
@@ -2517,7 +2681,8 @@ window.ModTodo = {
       </div>
       ${coinFieldHtml}
       <div class="field">
-        <label>요일 선택</label>
+        <label>${week ? '다음 주 요일 선택' : '요일 선택'}</label>
+        ${week ? '<div class="td-weekhint">다음 주에 할 일이 생겨요</div>' : ''}
         <div class="td-day-chips" id="td-ed-days">
           ${DAYS.map((d, i) => `<button type="button" class="pill td-daysel-chip ${i === day ? 'on' : ''}" data-dsel="${i}">${d[0]}</button>`).join('')}
         </div>
@@ -2536,7 +2701,11 @@ window.ModTodo = {
       <button type="button" class="btn full" id="td-ed-save">${editing ? '수정 완료' : '할 일 등록'}</button>
     `;
 
-    App.sheet(editing ? '할 일 수정' : '할 일 등록', body, foot, (bodyEl, footEl) => {
+    const sheetTitle = editing
+      ? (week ? '다음 주 할 일 수정' : '할 일 수정')
+      : (week ? '다음 주 할 일 등록' : '할 일 등록');
+
+    App.sheet(sheetTitle, body, foot, (bodyEl, footEl) => {
       let selDay = day;
       let selCoin = coin;
       let selSecret = secret;
@@ -2592,6 +2761,7 @@ window.ModTodo = {
           App.state.todos.push({
             id: uid(),
             day: selDay,
+            w: week,                 // 0 = 이번 주, 1 = 다음 주
             for: App.vm(),
             text: val,
             coin: canSetCoin ? selCoin : 0,
@@ -2611,9 +2781,11 @@ window.ModTodo = {
     return `
       <div class="td-days">
         ${DAYS.map((d, i) => {
+          /* App.todosOf(i) 는 지금 보고 있는 주 기준이라 그대로 쓴다 */
           const cnt = App.todosOf(i).filter(t => App.canSee(t) && !t.done).length;
+          const isToday = !App.week && i === App.today;   // '오늘'은 이번 주에만 있다
           return `
-            <button type="button" class="td-day-chip ${i === App.day ? 'on' : ''} ${i === App.today ? 'today' : ''}" data-day="${i}">
+            <button type="button" class="td-day-chip ${i === App.day ? 'on' : ''} ${isToday ? 'today' : ''}" data-day="${i}">
               <span class="td-day-label">${d[0]}</span>
               ${cnt > 0 ? `<span class="td-day-dot">${cnt > 9 ? '9+' : cnt}</span>` : ''}
             </button>
@@ -2623,13 +2795,29 @@ window.ModTodo = {
     `;
   },
 
-  _summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView }){
+  /* 이번 주 / 다음 주 전환 — 코어의 .wknav 스타일(선택 = 테두리 + 컬러)을 그대로 쓴다 */
+  _weekNavHtml(week){
+    return `
+      <div class="wknav td-weeknav" id="td-weeknav">
+        <button type="button" data-wk="0" class="${week ? '' : 'on'}">이번 주</button>
+        <button type="button" data-wk="1" class="${week ? 'on' : ''}">다음 주</button>
+      </div>
+    `;
+  },
+
+  _summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView, week }){
     const member = App.member();
+    const name = this._esc(member.name);
     const showCoinMetrics = isChildView && totalCoins > 0;
+    const scope = this._scopeLabel(week);   // '오늘' / '수요일' / '다음 주 수요일'
     const title = allDone
-      ? (isChildView ? '오늘 할 일 다 끝냈어요! 🎉' : `${member.name}의 할 일을 다 끝냈어요! 🎉`)
-      : (isChildView ? '오늘의 할 일' : `${member.name}의 할 일`);
-    const sub = allDone ? '정말 최고예요!' : (totalCount > 0 ? `${totalCount - doneCount}개 남았어요` : '아직 할 일이 없어요');
+      ? (isChildView ? `${scope} 다 끝냈어요! 🎉` : `${name}의 ${scope} 다 끝냈어요! 🎉`)
+      : (isChildView ? `${scope} 할 일` : `${name}의 ${scope} 할 일`);
+    const sub = allDone
+      ? '정말 최고예요!'
+      : (totalCount > 0
+          ? `${totalCount - doneCount}개 남았어요`
+          : (week ? '미리 적어두면 다음 주가 편해요' : '아직 할 일이 없어요'));
 
     return `
       <div class="panel td-summary ${allDone ? 'td-summary--done' : ''}">
@@ -2644,7 +2832,7 @@ window.ModTodo = {
             <div class="td-summary-sub">${sub}</div>
             ${showCoinMetrics ? `
               <div class="td-summary-metrics">
-                <span class="td-metric">오늘 모을 수 있는 코인 <b>🪙 ${totalCoins}</b></span>
+                <span class="td-metric">${scope} 모을 수 있는 코인 <b>🪙 ${totalCoins}</b></span>
                 <span class="td-metric">지금까지 모은 코인 <b>🪙 ${earnedCoins}</b></span>
               </div>
             ` : ''}
@@ -2655,11 +2843,12 @@ window.ModTodo = {
     `;
   },
 
-  _quickAddHtml(){
+  _quickAddHtml(week){
+    const ph = week ? '다음 주 할 일을 미리 내주세요 (Enter로 추가)' : '아이에게 할 일을 내주세요 (Enter로 추가)';
     return `
       <div class="td-quickadd">
         <span class="td-quickadd-icon">✏️</span>
-        <input type="text" class="inp td-quickadd-inp" placeholder="아이에게 할 일을 내주세요 (Enter로 추가)" maxlength="40" />
+        <input type="text" class="inp td-quickadd-inp" placeholder="${ph}" maxlength="40" />
       </div>
     `;
   },
@@ -2704,8 +2893,18 @@ window.ModTodo = {
   _bind(root){
     root.querySelectorAll('[data-day]').forEach(chip => {
       chip.addEventListener('click', () => {
-        App.day = Number(chip.dataset.day);
-        App.render();
+        /* 보고 있는 주는 그대로 두고 요일만 옮긴다 */
+        App.setDay(Number(chip.dataset.day));
+      });
+    });
+
+    root.querySelectorAll('#td-weeknav [data-wk]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const w = Number(btn.dataset.wk);
+        if((App.week ? 1 : 0) === w) return;
+        App.goWeek(w);
+        App.haptic && App.haptic();
+        App.toast(w ? '다음 주 할 일이에요' : '이번 주 할 일이에요');
       });
     });
 
@@ -2749,6 +2948,7 @@ window.ModTodo = {
           App.state.todos.push({
             id: uid(),
             day: App.day,
+            w: App.week ? 1 : 0,     // 지금 보고 있는 주에 넣는다
             for: App.vm(),
             text: val,
             coin: App.canSetCoin() ? 10 : 0,
@@ -2757,7 +2957,7 @@ window.ModTodo = {
             owner: App.meId()
           });
           App.save();
-          App.toast('할 일을 냈어요!');
+          App.toast(App.week ? '다음 주 할 일을 냈어요!' : '할 일을 냈어요!');
           App.render();
         }
       });
@@ -2779,9 +2979,11 @@ window.ModTodo = {
     if(willBeDone) window.ModSound && ModSound.play('check');
     if(willBeDone && t.coin > 0) window.ModSound && ModSound.play('coin');
 
-    const dayTodos = App.todosOf(t.day).filter(x => App.canSee(x));
+    /* 그 할 일이 들어 있는 주 기준으로 센다 (예전 데이터는 w 가 없으니 0) */
+    const tw = (t.w || 0) ? 1 : 0;
+    const dayTodos = App.todosOf(t.day, tw).filter(x => App.canSee(x));
     const remaining = dayTodos.filter(x => !x.done).length;
-    const key = `${App.vm()}_${t.day}`;
+    const key = `${App.vm()}_${tw}_${t.day}`;
     this._celebrated = this._celebrated || {};
 
     if(willBeDone){
@@ -2793,7 +2995,7 @@ window.ModTodo = {
       if(dayTodos.length > 0 && remaining === 0 && !this._celebrated[key]){
         this._celebrated[key] = true;
         const coinTotal = dayTodos.reduce((s, x) => s + (x.coin || 0), 0);
-        this._celebrate(coinTotal);
+        this._celebrate(coinTotal, this._scopeLabel(tw, t.day));
       }
     } else {
       this._celebrated[key] = false;
@@ -2804,7 +3006,7 @@ window.ModTodo = {
     App.render();
   },
 
-  _celebrate(coinTotal){
+  _celebrate(coinTotal, scopeLabel){
     window.ModSound && ModSound.play('complete');
     const phone = document.getElementById('phone');
     if(!phone) return;
@@ -2831,7 +3033,7 @@ window.ModTodo = {
       ${confettiHtml}
       <div class="td-cele-card">
         <div class="td-cele-emoji">🎉</div>
-        <div class="td-cele-title">오늘 할 일 완료!</div>
+        <div class="td-cele-title">${this._esc(scopeLabel || '오늘')} 할 일 완료!</div>
         ${coinTotal > 0 ? `<div class="td-cele-coin">🪙 ${coinTotal}코인 모았어요</div>` : ''}
         <button type="button" class="btn full td-cele-go">보상 받으러 가기 →</button>
       </div>
@@ -4658,11 +4860,11 @@ window.ModFamily = {
     return keys.map(k => PERM_KEYS[k].t).join(' · ');
   },
 
+  /* 이번 주(w=0) 기준 일정 수 — App.evs() 로 읽어야 다음 주 키('n0'~'n6')가 섞여도 안전하다 */
   _memberWeekCount(id){
-    const S = (App.state.schedules && App.state.schedules[id]) || {};
     let n = 0;
     for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => { if(App.canSee(s)) n++; });
+      App.evs(i, 0, id).forEach(s => { if(App.canSee(s)) n++; });
     }
     return n;
   },
@@ -5218,23 +5420,25 @@ window.ModFamily = {
 
   /* ================= 비밀 항목 ================= */
 
+  /* 이번 주·다음 주 둘 다 훑는다 — App.evs() 로 읽어야 'n0'~'n6' 키와 반복 얹힘이 안 빠진다 */
   _secretItems(){
     const my = App.meId();
     const items = [];
     const allSchedules = App.state.schedules || {};
     Object.keys(allSchedules).forEach(mid => {
-      const byDay = allSchedules[mid] || {};
-      for(let i = 0; i < 7; i++){
-        (byDay[i] || []).forEach(s => {
-          if(s.secret && s.owner === my){
-            items.push({ type: 'schedule', label: s.t, sub: `${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
-          }
-        });
+      for(let week = 0; week <= 1; week++){
+        for(let i = 0; i < 7; i++){
+          App.evs(i, week, mid).forEach(s => {
+            if(s.secret && s.owner === my){
+              items.push({ type: 'schedule', label: s.t, sub: `${week ? '다음 주 ' : ''}${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
+            }
+          });
+        }
       }
     });
     (App.state.todos || []).forEach(t => {
       if(t.secret && t.owner === my){
-        items.push({ type: 'todo', label: t.text, sub: `${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
+        items.push({ type: 'todo', label: t.text, sub: `${t.w ? '다음 주 ' : ''}${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
       }
     });
     return items;
@@ -5266,13 +5470,13 @@ window.ModFamily = {
 
   /* ================= 주간 요약 ================= */
 
+  /* 주간 요약·공유 카드는 이번 주(w=0) 기준으로 고정한다 */
   _weeklyStats(){
     const vmId = App.vm();
-    const S = App.sched(vmId);
     let totalSchedules = 0, alarmOn = 0;
     const perDay = [0, 0, 0, 0, 0, 0, 0];
     for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => {
+      App.evs(i, 0, vmId).forEach(s => {
         if(!App.canSee(s)) return;
         totalSchedules++;
         perDay[i]++;
@@ -5281,7 +5485,7 @@ window.ModFamily = {
     }
     let todoDone = 0, todoTotal = 0;
     for(let i = 0; i < 7; i++){
-      App.todosOf(i).forEach(t => {
+      App.todosOf(i, 0).forEach(t => {
         if(!App.canSee(t)) return;
         todoTotal++;
         if(t.done) todoDone++;
@@ -5354,7 +5558,7 @@ window.ModFamily = {
     /* 요일별 할 일 완료 상태 */
     const defOwner = App.defaultTodoOwner ? App.defaultTodoOwner() : 'm1';
     const todoByDay = DAYS.map((_, i) => {
-      const list = (App.state.todos || []).filter(t => (t.for || defOwner) === mid && t.day === i && App.canSee(t));
+      const list = (App.state.todos || []).filter(t => (t.for || defOwner) === mid && t.day === i && (t.w || 0) === 0 && App.canSee(t));
       return { total: list.length, done: list.filter(t => t.done).length };
     });
     const perfectDays = todoByDay.filter(d => d.total > 0 && d.done === d.total).length;
@@ -5709,45 +5913,47 @@ window.ModNotify = {
     const vm = App.vm();
     const items = [];
 
-    // 1) 일정 시작 알림
-    (App.sched(vm)[App.today] || []).forEach(ev => {
+    // 1) 일정 시작 알림 — 알림은 항상 "이번 주" 기준(w=0)
+    App.evs(App.today, 0, vm).forEach(ev => {
       if(!ev.alarm || !App.canSee(ev)) return;
       const t = toMin(ev.s) - (cfg.lead || 10);
       items.push({
         id:`nt:${vm}:sched:${ev.id}`, time:t, icon:'🔔', tone:'info',
         title:`${cfg.lead}분 후 ${esc(ev.t)} 시작`,
         body:`${this._ampm(toMin(ev.s))} ${disp(toMin(ev.s))} 시작`,
-        toggleType:'sched', schedId:ev.id, schedDay:App.today
+        toggleType:'sched', schedId:ev.id, schedDay:App.today, schedWeek:0
       });
     });
 
     // 2) 준비물 알림
     if(cfg.prepLead === 'night'){
       const tmr = (App.today + 1) % 7;
-      (App.sched(vm)[tmr] || []).forEach(ev => {
+      // 오늘이 토요일이면 "내일"은 다음 주 일요일이 된다
+      const tmrW = App.today === 6 ? 1 : 0;
+      App.evs(tmr, tmrW, vm).forEach(ev => {
         if(!ev.alarm || !ev.items || !ev.items.length || !App.canSee(ev)) return;
         items.push({
           id:`nt:${vm}:prep:${ev.id}`, time:21 * 60, icon:'🎒', tone:'warn',
           title:`내일 ${esc(ev.t)} 준비물`,
           body:ev.items.join(', '),
-          toggleType:'sched', schedId:ev.id, schedDay:tmr
+          toggleType:'sched', schedId:ev.id, schedDay:tmr, schedWeek:tmrW
         });
       });
     } else if(cfg.prepLead === 'morning'){
-      (App.sched(vm)[App.today] || []).forEach(ev => {
+      App.evs(App.today, 0, vm).forEach(ev => {
         if(!ev.alarm || !ev.items || !ev.items.length || !App.canSee(ev)) return;
         items.push({
           id:`nt:${vm}:prepm:${ev.id}`, time:7 * 60, icon:'🎒', tone:'warn',
           title:`오늘 ${esc(ev.t)} 준비물`,
           body:ev.items.join(', '),
-          toggleType:'sched', schedId:ev.id, schedDay:App.today
+          toggleType:'sched', schedId:ev.id, schedDay:App.today, schedWeek:0
         });
       });
     }
 
     // 3) 할 일 알림
     if(cfg.todoDaily){
-      const undone = App.todosOf(App.today).filter(t => !t.done && App.canSee(t));
+      const undone = App.todosOf(App.today, 0).filter(t => !t.done && App.canSee(t));
       if(undone.length){
         items.push({
           id:`nt:${vm}:todo:${App.today}`, time:8 * 60 + 30, icon:'✅', tone:'good',
@@ -5817,6 +6023,7 @@ window.ModNotify = {
       ? `<span class="nt-item-sent">보냄</span>`
       : `<button type="button" class="nt-item-toggle on" data-toggle-type="${it.toggleType}"
            data-sched-id="${it.schedId || ''}" data-sched-day="${it.schedDay != null ? it.schedDay : ''}"
+           data-sched-week="${it.schedWeek != null ? it.schedWeek : 0}"
            aria-label="알림 끄기"></button>`;
     return `
       <div class="nt-item ${past ? 'past' : ''}">
@@ -5844,8 +6051,9 @@ window.ModNotify = {
           App.toast('할 일 알림을 껐어요');
         } else {
           const day = +btn.dataset.schedDay;
+          const week = +btn.dataset.schedWeek || 0;
           const id = btn.dataset.schedId;
-          const list = App.sched()[day] || [];
+          const list = App.evs(day, week);
           const ev = list.find(x => x.id === id);
           if(ev){
             ev.alarm = false;
@@ -7249,20 +7457,28 @@ window.ModReport = {
     this._raf2 = null;
   },
 
-  /* ================= 데이터 집계 ================= */
-  _weekData(memberId){
+  /* ================= 데이터 집계 =================
+     리포트는 이번 주 기준(w=0)이다. 다음 주에 넣어둔 일정이나 반복 일정의
+     "다음 주 얹힘"이 이번 주 성취에 섞이면 안 되므로 App.evs(d, 0, memberId) 로 고정해서 읽는다.
+     archive=true 이면 지난 주 스냅샷(App.state.archive)에서 할 일만 집계한다
+     (스케줄/준비물은 rollWeeks() 때 보존되지 않으므로 지난 주 리포트에는 포함하지 않는다). */
+  _weekData(memberId, archive){
     const days = [];
     let totalTodos = 0, doneTodos = 0, totalItems = 0, packedItemsCount = 0, totalEvents = 0, alarmOnEvents = 0;
-    const schedAll = App.sched(memberId) || {};
     const itemTitleStats = {};
+    const todosSource = archive
+      ? (App.state.archive && App.state.archive.todos || []).filter(t => (t.w || 0) === 0)
+      : null;
 
     for(let d = 0; d < 7; d++){
-      const todosDay = App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t));
+      const todosDay = archive
+        ? todosSource.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t))
+        : App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && (t.w || 0) === 0 && App.canSee(t));
       const doneDay = todosDay.filter(t => t.done);
       const coinDay = doneDay.reduce((s, t) => s + (t.coin || 0), 0);
       totalTodos += todosDay.length; doneTodos += doneDay.length;
 
-      const evs = (schedAll[d] || []).filter(ev => App.canSee(ev));
+      const evs = archive ? [] : App.evs(d, 0, memberId).filter(ev => App.canSee(ev));
       totalEvents += evs.length;
       alarmOnEvents += evs.filter(ev => ev.alarm).length;
 
@@ -7291,7 +7507,7 @@ window.ModReport = {
       });
     }
 
-    return { days, totalTodos, doneTodos, totalItems, packedItemsCount, totalEvents, alarmOnEvents, itemTitleStats };
+    return { days, totalTodos, doneTodos, totalItems, packedItemsCount, totalEvents, alarmOnEvents, itemTitleStats, archive:!!archive };
   },
 
   _score(wd){
@@ -7358,9 +7574,9 @@ window.ModReport = {
   },
 
   /* ================= 마크업 ================= */
-  _headHtml(member, score, grade){
+  _headHtml(member, score, grade, archive){
     const scoreHtml = score == null
-      ? `<div class="rp-score-empty">이번 주엔 기록된 활동이 아직 없어요</div>`
+      ? `<div class="rp-score-empty">${archive ? '지난 주엔 기록된 활동이 없어요' : '이번 주엔 기록된 활동이 아직 없어요'}</div>`
       : `<div class="rp-score-num">${score}<span class="unit">점</span></div><div class="rp-grade">${grade.label}</div>`;
     return `
       <div class="rp-head">
@@ -7368,7 +7584,7 @@ window.ModReport = {
           <div class="rp-head-av">${esc(member.emoji || '🙂')}</div>
           <div>
             <div class="rp-head-name">${this._esc(member.name)}</div>
-            <div class="rp-head-sub">이번 주 리포트</div>
+            <div class="rp-head-sub">${archive ? '지난 주 리포트' : '이번 주 리포트'}</div>
           </div>
         </div>
         <div class="rp-score-wrap">${scoreHtml}</div>
@@ -7407,7 +7623,7 @@ window.ModReport = {
     const daysRow = wd.days.map(d => `<span class="${d.day === App.today ? 'today' : ''}">${DAYS[d.day][0]}</span>`).join('');
     return `
       <div class="rp-coin-card">
-        <div class="rp-coin-total">이번 주 누적 <b>${totalCoin}</b>코인 모았어요</div>
+        <div class="rp-coin-total">${wd.archive ? '지난 주' : '이번 주'} 누적 <b>${totalCoin}</b>코인 모았어요</div>
         <svg class="rp-coin-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
           <polyline class="rp-line" points="${lineStr}"></polyline>
           ${circles}
@@ -7426,7 +7642,7 @@ window.ModReport = {
       : `<div class="rp-ring-num">–</div><div class="rp-ring-pct">기록 없음</div>`;
     let subText;
     if(!wd.totalItems){
-      subText = '이번 주엔 준비물이 있는 일정이 없어요';
+      subText = wd.archive ? '지난 주 준비물 기록은 남아있지 않아요' : '이번 주엔 준비물이 있는 일정이 없어요';
     } else if(prepRate >= 0.8){
       subText = '이번 주 준비물 챙기기, 잘 해내고 있어요';
     } else if(prepRate >= 0.4){
@@ -7480,11 +7696,11 @@ window.ModReport = {
     `).join('')}</div>`;
   },
 
-  _compareHtml(){
+  _compareHtml(archive){
     if(!App.can('editOthers')) return '';
     const children = App.state.members.filter(m => m.role === 'child');
     if(children.length < 2) return '';
-    const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id)) }));
+    const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id, archive)) }));
     const rowsHtml = rows.map(r => `
       <div class="rp-cmp-row">
         <div class="rp-cmp-name">${esc(r.m.emoji || '🙂')} ${this._esc(r.m.name)}</div>
@@ -7500,8 +7716,9 @@ window.ModReport = {
     `;
   },
 
-  /* ================= 진입점 ================= */
-  open(memberId){
+  /* ================= 진입점 =================
+     archive=true 면 App.state.archive(지난 주 스냅샷)로 보여준다. */
+  open(memberId, archive){
     if(this._raf1) cancelAnimationFrame(this._raf1);
     if(this._raf2) cancelAnimationFrame(this._raf2);
     this._token = (this._token || 0) + 1;
@@ -7511,12 +7728,15 @@ window.ModReport = {
     const member = App.member(mid);
     if(!member) return App.toast('멤버를 찾을 수 없어요');
 
-    const wd = this._weekData(mid);
+    const showArchive = !!archive && !!App.state.archive;
+    if(archive && !App.state.archive){ App.toast('지난 주 기록이 아직 없어요'); return; }
+
+    const wd = this._weekData(mid, showArchive);
     const score = this._score(wd);
     const grade = this._grade(score);
 
     const body = `
-      ${this._headHtml(member, score, grade)}
+      ${this._headHtml(member, score, grade, showArchive)}
       <div class="rp-sec">
         <div class="rp-sec-h">요일별 할 일 완료율</div>
         ${this._barsHtml(wd)}
@@ -7533,13 +7753,18 @@ window.ModReport = {
         <div class="rp-sec-h">잘한 점 · 도와줄 점</div>
         ${this._insightsHtml(wd)}
       </div>
-      ${this._compareHtml()}
+      ${this._compareHtml(showArchive)}
     `;
 
-    const foot = `
-      <button type="button" class="btn line rp-foot-btn" id="rpLastWeek">지난 주 보기</button>
-      <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
-    `;
+    const foot = showArchive
+      ? `
+        <button type="button" class="btn line rp-foot-btn" id="rpThisWeek">이번 주 보기</button>
+        <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
+      `
+      : `
+        <button type="button" class="btn line rp-foot-btn" id="rpLastWeek">지난 주 보기</button>
+        <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
+      `;
 
     App.sheet(`${esc(member.name)}의 주간 리포트`, body, foot, (b, f) => {
       this._raf1 = requestAnimationFrame(() => {
@@ -7559,7 +7784,13 @@ window.ModReport = {
       });
       const lastBtn = f.querySelector('#rpLastWeek');
       if(lastBtn) lastBtn.addEventListener('click', () => {
-        App.toast('지난 주 기록이 아직 없어요');
+        if(App.haptic) App.haptic();
+        this.open(mid, true);
+      });
+      const thisBtn = f.querySelector('#rpThisWeek');
+      if(thisBtn) thisBtn.addEventListener('click', () => {
+        if(App.haptic) App.haptic();
+        this.open(mid, false);
       });
     });
   },
@@ -7609,6 +7840,10 @@ window.ModSearch = {
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     }
     .sr-mark{ background:var(--indigo-s); color:var(--indigo-d); border-radius:4px; padding:0 2px; font-weight:800; }
+    .sr-wk-badge{
+      display:inline-block; margin-left:6px; font-size:9.5px; font-weight:800; color:var(--indigo-d);
+      background:var(--indigo-s); padding:2px 6px; border-radius:7px; vertical-align:middle;
+    }
 
     .sr-block{ margin-bottom:2px; }
     .sr-block-h{ font-size:12px; font-weight:800; color:var(--muted); margin-bottom:9px; }
@@ -7804,7 +8039,9 @@ window.ModSearch = {
     return html;
   },
 
-  /* ---------- 매칭 ---------- */
+  /* ---------- 매칭 ----------
+     이번 주(0)·다음 주(1) 를 모두 훑는다. App.evs() 를 쓰면 다음 주엔 반복 일정도
+     자동으로 얹혀서 나오므로 별도 처리 없이 그대로 검색 대상에 포함된다. */
   _collectMatches(q){
     const ql = q.toLowerCase();
     const memberIds = App.canSwitchMember() ? App.state.members.map(m => m.id) : [App.meId()];
@@ -7812,23 +8049,24 @@ window.ModSearch = {
 
     memberIds.forEach(mid => {
       const member = App.member(mid);
-      const schedDays = App.state.schedules[mid] || {};
-      for(let day = 0; day < 7; day++){
-        (schedDays[day] || []).forEach(ev => {
-          if(!App.canSee(ev)) return;
-          const titleHit = ev.t && ev.t.toLowerCase().indexOf(ql) > -1;
-          const memoHit = ev.memo && ev.memo.toLowerCase().indexOf(ql) > -1;
-          if(titleHit || memoHit) schedRows.push({ ev, day, member });
-          (ev.items || []).forEach(it => {
-            if(it.toLowerCase().indexOf(ql) > -1) supplyRows.push({ ev, day, member, item: it });
+      for(let week = 0; week <= 1; week++){
+        for(let day = 0; day < 7; day++){
+          App.evs(day, week, mid).forEach(ev => {
+            if(!App.canSee(ev)) return;
+            const titleHit = ev.t && ev.t.toLowerCase().indexOf(ql) > -1;
+            const memoHit = ev.memo && ev.memo.toLowerCase().indexOf(ql) > -1;
+            if(titleHit || memoHit) schedRows.push({ ev, day, week, member });
+            (ev.items || []).forEach(it => {
+              if(it.toLowerCase().indexOf(ql) > -1) supplyRows.push({ ev, day, week, member, item: it });
+            });
           });
-        });
+        }
       }
       App.state.todos.forEach(t => {
         const forId = t.for || App.defaultTodoOwner();
         if(forId !== mid) return;
         if(!App.canSee(t)) return;
-        if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member });
+        if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member, week:(t.w || 0) });
       });
     });
 
@@ -7850,17 +8088,21 @@ window.ModSearch = {
     return h < 12 ? '오전' : '오후';
   },
 
+  _wkBadge(week){
+    return week ? `<span class="sr-wk-badge">다음 주</span>` : '';
+  },
+
   _schedRowHtml(r, q){
-    const { ev, day, member } = r;
+    const { ev, day, week, member } = r;
     const color = CFILL(ev.c).fill;
     const startMin = toMin(ev.s);
     const meta = `${esc(member.name)} · ${DAYS[day][0]}요일 ${this._ampm(startMin)} ${disp(startMin)}`;
     const showMemo = ev.memo && ev.memo.toLowerCase().indexOf(q.toLowerCase()) > -1;
     return `
-      <button type="button" class="sr-row" data-kind="sched" data-member="${member.id}" data-day="${day}" data-id="${ev.id}">
+      <button type="button" class="sr-row" data-kind="sched" data-member="${member.id}" data-day="${day}" data-week="${week}" data-id="${ev.id}">
         <span class="sr-dot" style="background:${color}"></span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(ev.t, q)}</span>
+          <span class="sr-row-title">${this._hilite(ev.t, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
           ${showMemo ? `<span class="sr-row-sub">${this._hilite(ev.memo, q)}</span>` : ''}
         </span>
@@ -7869,14 +8111,14 @@ window.ModSearch = {
   },
 
   _todoRowHtml(r, q){
-    const { todo, member } = r;
+    const { todo, member, week } = r;
     const icon = todo.done ? '✅' : '⬜️';
     const meta = `${esc(member.name)} · ${DAYS[todo.day][0]}요일${todo.done ? ' · 완료' : ''}`;
     return `
-      <button type="button" class="sr-row" data-kind="todo" data-member="${member.id}" data-day="${todo.day}" data-id="${todo.id}">
+      <button type="button" class="sr-row" data-kind="todo" data-member="${member.id}" data-day="${todo.day}" data-week="${week || 0}" data-id="${todo.id}">
         <span class="sr-icon">${icon}</span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(todo.text, q)}</span>
+          <span class="sr-row-title">${this._hilite(todo.text, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
         </span>
       </button>
@@ -7884,15 +8126,15 @@ window.ModSearch = {
   },
 
   _supplyRowHtml(r, q){
-    const { ev, day, member, item } = r;
+    const { ev, day, week, member, item } = r;
     const color = CFILL(ev.c).fill;
     const startMin = toMin(ev.s);
     const meta = `${esc(ev.t)} · ${esc(member.name)} · ${DAYS[day][0]}요일 ${this._ampm(startMin)} ${disp(startMin)}`;
     return `
-      <button type="button" class="sr-row" data-kind="supply" data-member="${member.id}" data-day="${day}" data-id="${ev.id}">
+      <button type="button" class="sr-row" data-kind="supply" data-member="${member.id}" data-day="${day}" data-week="${week}" data-id="${ev.id}">
         <span class="sr-dot" style="background:${color}"></span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(item, q)}</span>
+          <span class="sr-row-title">${this._hilite(item, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
         </span>
       </button>
@@ -7902,15 +8144,16 @@ window.ModSearch = {
   /* ---------- 이동 ---------- */
   _goToResult(ds){
     const day = +ds.day;
+    const week = +ds.week || 0;
     App.closeSheet();
     if(ds.kind === 'todo'){
       App.viewMember = ds.member;
       App.go('todo');
-      App.setDay(day);
+      App.setDay(day, undefined, week);
     } else {
       App.viewMember = ds.member;
       App.view = 'day';
-      App.setDay(day);
+      App.setDay(day, undefined, week);
       App.openCard = ds.id;
       App.render();
     }
@@ -7956,7 +8199,7 @@ window.ModSearch = {
 
   _isDup(tpl){
     const days = this._daySelected && this._daySelected.size ? [...this._daySelected] : [App.day];
-    return days.some(d => (App.sched()[d] || []).some(ev => ev.t === tpl.t));
+    return days.some(d => App.evs(d).some(ev => ev.t === tpl.t));
   },
 
   _tplGridHtml(){
@@ -8050,7 +8293,7 @@ window.ModSearch = {
 
     let count = 0;
     days.forEach(d => {
-      const list = App.sched()[d] = App.sched()[d] || [];
+      const list = App.bucket(d);
       tpls.forEach(tpl => {
         if(list.some(ev => ev.t === tpl.t)) return;
         list.push({
@@ -8181,7 +8424,7 @@ window.ModBadge = {
       { id:'day_all_done', emoji:'🌟', name:'오늘 다 했어요', desc:'하루의 할 일을 모두 끝냈어요',
         test: () => {
           for(let d = 0; d < 7; d++){
-            const list = App.todosOf(d).filter(t => App.canSee(t));
+            const list = App.todosOf(d, 0).filter(t => App.canSee(t));
             if(list.length > 0 && list.every(t => t.done)) return true;
           }
           return false;
@@ -8191,7 +8434,7 @@ window.ModBadge = {
         test: () => {
           let count = 0;
           for(let d = 0; d < 7; d++){
-            const list = App.todosOf(d).filter(t => App.canSee(t));
+            const list = App.todosOf(d, 0).filter(t => App.canSee(t));
             if(list.length > 0 && list.every(t => t.done)) count++;
           }
           return count >= 3;
@@ -9217,7 +9460,9 @@ window.ModSync = {
       members: s.members, schedules: s.schedules, todos: s.todos,
       reward: s.reward, coins: s.coins, doneEv: s.doneEv || {},
       badges: s.badges || {},
-      groupOpts: s.groupOpts || {approval:false}   // 그룹 정책 — 마스터가 정한다
+      groupOpts: s.groupOpts || {approval:false},  // 그룹 정책 — 마스터가 정한다
+      weekAnchor: s.weekAnchor || null,            // 이번 주의 기준선 — 기기마다 다르면 안 된다
+      hiddenNext: s.hiddenNext || {}               // 다음 주에서만 뺀 반복 일정
     };
   },
 
@@ -9238,6 +9483,8 @@ window.ModSync = {
     if(st.doneEv) s.doneEv = st.doneEv;
     if(st.badges) s.badges = st.badges;
     if(st.groupOpts) s.groupOpts = st.groupOpts;
+    if(st.weekAnchor) s.weekAnchor = st.weekAnchor;
+    if(st.hiddenNext) s.hiddenNext = st.hiddenNext;
 
     if(keepMe){
       /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */
@@ -9837,10 +10084,10 @@ window.ModSync = {
 window.App=App; window.PALETTE=PALETTE; window.DAYS=DAYS;
 
 App.editSchedule=function(id,presetStart){
-  const S=this.sched();
-  const list=S[this.day]||(S[this.day]=[]);
+  const list=this.bucket();           /* 지금 보는 주의 바구니 */
+  const view=this.evs();               /* 반복까지 포함한 화면 목록 */
   const who=this.member();
-  const ev=id?list.find(x=>x.id===id):null;
+  const ev=id?view.find(x=>x.id===id):null;
   if(id&&!ev)id=null;
   if(ev&&!this.canSee(ev)){this.toast('🔒 작성자만 볼 수 있는 일정이에요');return;}
   const d=ev||{s:presetStart||'15:00',e:presetStart?toStr(Math.min(23*60,toMin(presetStart)+60)):'16:00',t:'',c:'lime',alarm:true,memo:'',items:[],secret:false};
@@ -9914,7 +10161,14 @@ App.editSchedule=function(id,presetStart){
     b.querySelectorAll('#fA,#fRep,#fSec').forEach(t=>t.onclick=e=>e.currentTarget.classList.toggle('on'));
     const del=b.querySelector('#fDel');
     if(del)del.onclick=()=>{
-      S[this.day]=list.filter(x=>x.id!==id);
+      /* 다음 주에서 반복 일정을 지우면 그 주에서만 뺀다 */
+      if(this.isBorrowed(id,this.day)){
+        (this.state.hiddenNext=this.state.hiddenNext||{})[this.hideKey(this.day,id)]=1;
+        this.save();this.closeSheet();this.render();
+        return this.toast('다음 주에서만 뺐어요 · 이번 주는 그대로예요');
+      }
+      const k=this.dk();
+      this.sched()[k]=(this.sched()[k]||[]).filter(x=>x.id!==id);
       this.save();this.closeSheet();this.render();this.toast('일정을 삭제했어요');
     };
     f.querySelector('#fCancel').onclick=()=>this.closeSheet();
@@ -9933,7 +10187,7 @@ App.editSchedule=function(id,presetStart){
       if(id){Object.assign(ev,base);}
       else{
         (days.length?days:[this.day]).forEach(dy=>{
-          (S[dy]=S[dy]||[]).push(Object.assign({id:uid()},base));
+          this.bucket(dy).push(Object.assign({id:uid()},base));
         });
       }
       this.save();this.closeSheet();this.openCard=null;this.render();
@@ -10350,12 +10604,12 @@ App.openSim=function(){
     if(App.tab==='todo'&&window.ModTodo&&ModTodo.openEditor)ModTodo.openEditor(null);
     else App.editSchedule(null);
   };
-  document.getElementById('btnToday').onclick=()=>{App.setDay(App.today);setTimeout(()=>App.scrollToNow(),120)};
+  document.getElementById('btnToday').onclick=()=>{App.setDay(App.today,undefined,0);setTimeout(()=>App.scrollToNow(),120)};
 
   App.pickDay=function(){
     this.sheet('요일 선택',`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
       ${DAYS.map((x,i)=>{
-        const n=(this.sched()[i]||[]).length;
+        const n=this.evs(i).length;
         return `<button class="dpick ${i===this.day?'on':''}" data-d="${i}">
           <b>${x[0]}</b><span>${x[1]}</span><i>${n}개</i>${i===this.today?'<u>오늘</u>':''}</button>`;
       }).join('')}
@@ -10378,13 +10632,13 @@ App.openSim=function(){
   stage.addEventListener('touchend',e=>{
     if(x0===null||App.tab!=='time'||App.view!=='day')return;
     const dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
-    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){const dir=dx<0?1:-1;App.setDay(App.day+dir,dir);App.haptic();if(window.ModSound)ModSound.play('tap');}
+    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){const dir=dx<0?1:-1;App.stepDay(dir);App.haptic();if(window.ModSound)ModSound.play('tap');}
     x0=null;
   },{passive:true});
   document.addEventListener('keydown',e=>{
     if(App.tab!=='time')return;
-    if(e.key==='ArrowRight')App.setDay(App.day+1,1);
-    if(e.key==='ArrowLeft')App.setDay(App.day-1,-1);
+    if(e.key==='ArrowRight')App.stepDay(1);
+    if(e.key==='ArrowLeft')App.stepDay(-1);
     if(e.key==='Escape')App.closeSheet();
   });
 

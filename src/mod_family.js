@@ -462,11 +462,11 @@ window.ModFamily = {
     return keys.map(k => PERM_KEYS[k].t).join(' · ');
   },
 
+  /* 이번 주(w=0) 기준 일정 수 — App.evs() 로 읽어야 다음 주 키('n0'~'n6')가 섞여도 안전하다 */
   _memberWeekCount(id){
-    const S = (App.state.schedules && App.state.schedules[id]) || {};
     let n = 0;
     for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => { if(App.canSee(s)) n++; });
+      App.evs(i, 0, id).forEach(s => { if(App.canSee(s)) n++; });
     }
     return n;
   },
@@ -1022,23 +1022,25 @@ window.ModFamily = {
 
   /* ================= 비밀 항목 ================= */
 
+  /* 이번 주·다음 주 둘 다 훑는다 — App.evs() 로 읽어야 'n0'~'n6' 키와 반복 얹힘이 안 빠진다 */
   _secretItems(){
     const my = App.meId();
     const items = [];
     const allSchedules = App.state.schedules || {};
     Object.keys(allSchedules).forEach(mid => {
-      const byDay = allSchedules[mid] || {};
-      for(let i = 0; i < 7; i++){
-        (byDay[i] || []).forEach(s => {
-          if(s.secret && s.owner === my){
-            items.push({ type: 'schedule', label: s.t, sub: `${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
-          }
-        });
+      for(let week = 0; week <= 1; week++){
+        for(let i = 0; i < 7; i++){
+          App.evs(i, week, mid).forEach(s => {
+            if(s.secret && s.owner === my){
+              items.push({ type: 'schedule', label: s.t, sub: `${week ? '다음 주 ' : ''}${DAYS[i][0]}요일 · ${disp(toMin(s.s))}` });
+            }
+          });
+        }
       }
     });
     (App.state.todos || []).forEach(t => {
       if(t.secret && t.owner === my){
-        items.push({ type: 'todo', label: t.text, sub: `${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
+        items.push({ type: 'todo', label: t.text, sub: `${t.w ? '다음 주 ' : ''}${DAYS[t.day][0]}요일 · 🪙 ${t.coin || 0}` });
       }
     });
     return items;
@@ -1070,13 +1072,13 @@ window.ModFamily = {
 
   /* ================= 주간 요약 ================= */
 
+  /* 주간 요약·공유 카드는 이번 주(w=0) 기준으로 고정한다 */
   _weeklyStats(){
     const vmId = App.vm();
-    const S = App.sched(vmId);
     let totalSchedules = 0, alarmOn = 0;
     const perDay = [0, 0, 0, 0, 0, 0, 0];
     for(let i = 0; i < 7; i++){
-      (S[i] || []).forEach(s => {
+      App.evs(i, 0, vmId).forEach(s => {
         if(!App.canSee(s)) return;
         totalSchedules++;
         perDay[i]++;
@@ -1085,7 +1087,7 @@ window.ModFamily = {
     }
     let todoDone = 0, todoTotal = 0;
     for(let i = 0; i < 7; i++){
-      App.todosOf(i).forEach(t => {
+      App.todosOf(i, 0).forEach(t => {
         if(!App.canSee(t)) return;
         todoTotal++;
         if(t.done) todoDone++;
@@ -1158,7 +1160,7 @@ window.ModFamily = {
     /* 요일별 할 일 완료 상태 */
     const defOwner = App.defaultTodoOwner ? App.defaultTodoOwner() : 'm1';
     const todoByDay = DAYS.map((_, i) => {
-      const list = (App.state.todos || []).filter(t => (t.for || defOwner) === mid && t.day === i && App.canSee(t));
+      const list = (App.state.todos || []).filter(t => (t.for || defOwner) === mid && t.day === i && (t.w || 0) === 0 && App.canSee(t));
       return { total: list.length, done: list.filter(t => t.done).length };
     });
     const perfectDays = todoByDay.filter(d => d.total > 0 && d.done === d.total).length;

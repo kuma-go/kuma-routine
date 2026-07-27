@@ -34,6 +34,10 @@ window.ModSearch = {
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     }
     .sr-mark{ background:var(--indigo-s); color:var(--indigo-d); border-radius:4px; padding:0 2px; font-weight:800; }
+    .sr-wk-badge{
+      display:inline-block; margin-left:6px; font-size:9.5px; font-weight:800; color:var(--indigo-d);
+      background:var(--indigo-s); padding:2px 6px; border-radius:7px; vertical-align:middle;
+    }
 
     .sr-block{ margin-bottom:2px; }
     .sr-block-h{ font-size:12px; font-weight:800; color:var(--muted); margin-bottom:9px; }
@@ -229,7 +233,9 @@ window.ModSearch = {
     return html;
   },
 
-  /* ---------- 매칭 ---------- */
+  /* ---------- 매칭 ----------
+     이번 주(0)·다음 주(1) 를 모두 훑는다. App.evs() 를 쓰면 다음 주엔 반복 일정도
+     자동으로 얹혀서 나오므로 별도 처리 없이 그대로 검색 대상에 포함된다. */
   _collectMatches(q){
     const ql = q.toLowerCase();
     const memberIds = App.canSwitchMember() ? App.state.members.map(m => m.id) : [App.meId()];
@@ -237,23 +243,24 @@ window.ModSearch = {
 
     memberIds.forEach(mid => {
       const member = App.member(mid);
-      const schedDays = App.state.schedules[mid] || {};
-      for(let day = 0; day < 7; day++){
-        (schedDays[day] || []).forEach(ev => {
-          if(!App.canSee(ev)) return;
-          const titleHit = ev.t && ev.t.toLowerCase().indexOf(ql) > -1;
-          const memoHit = ev.memo && ev.memo.toLowerCase().indexOf(ql) > -1;
-          if(titleHit || memoHit) schedRows.push({ ev, day, member });
-          (ev.items || []).forEach(it => {
-            if(it.toLowerCase().indexOf(ql) > -1) supplyRows.push({ ev, day, member, item: it });
+      for(let week = 0; week <= 1; week++){
+        for(let day = 0; day < 7; day++){
+          App.evs(day, week, mid).forEach(ev => {
+            if(!App.canSee(ev)) return;
+            const titleHit = ev.t && ev.t.toLowerCase().indexOf(ql) > -1;
+            const memoHit = ev.memo && ev.memo.toLowerCase().indexOf(ql) > -1;
+            if(titleHit || memoHit) schedRows.push({ ev, day, week, member });
+            (ev.items || []).forEach(it => {
+              if(it.toLowerCase().indexOf(ql) > -1) supplyRows.push({ ev, day, week, member, item: it });
+            });
           });
-        });
+        }
       }
       App.state.todos.forEach(t => {
         const forId = t.for || App.defaultTodoOwner();
         if(forId !== mid) return;
         if(!App.canSee(t)) return;
-        if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member });
+        if(t.text && t.text.toLowerCase().indexOf(ql) > -1) todoRows.push({ todo: t, member, week:(t.w || 0) });
       });
     });
 
@@ -275,17 +282,21 @@ window.ModSearch = {
     return h < 12 ? '오전' : '오후';
   },
 
+  _wkBadge(week){
+    return week ? `<span class="sr-wk-badge">다음 주</span>` : '';
+  },
+
   _schedRowHtml(r, q){
-    const { ev, day, member } = r;
+    const { ev, day, week, member } = r;
     const color = CFILL(ev.c).fill;
     const startMin = toMin(ev.s);
     const meta = `${esc(member.name)} · ${DAYS[day][0]}요일 ${this._ampm(startMin)} ${disp(startMin)}`;
     const showMemo = ev.memo && ev.memo.toLowerCase().indexOf(q.toLowerCase()) > -1;
     return `
-      <button type="button" class="sr-row" data-kind="sched" data-member="${member.id}" data-day="${day}" data-id="${ev.id}">
+      <button type="button" class="sr-row" data-kind="sched" data-member="${member.id}" data-day="${day}" data-week="${week}" data-id="${ev.id}">
         <span class="sr-dot" style="background:${color}"></span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(ev.t, q)}</span>
+          <span class="sr-row-title">${this._hilite(ev.t, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
           ${showMemo ? `<span class="sr-row-sub">${this._hilite(ev.memo, q)}</span>` : ''}
         </span>
@@ -294,14 +305,14 @@ window.ModSearch = {
   },
 
   _todoRowHtml(r, q){
-    const { todo, member } = r;
+    const { todo, member, week } = r;
     const icon = todo.done ? '✅' : '⬜️';
     const meta = `${esc(member.name)} · ${DAYS[todo.day][0]}요일${todo.done ? ' · 완료' : ''}`;
     return `
-      <button type="button" class="sr-row" data-kind="todo" data-member="${member.id}" data-day="${todo.day}" data-id="${todo.id}">
+      <button type="button" class="sr-row" data-kind="todo" data-member="${member.id}" data-day="${todo.day}" data-week="${week || 0}" data-id="${todo.id}">
         <span class="sr-icon">${icon}</span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(todo.text, q)}</span>
+          <span class="sr-row-title">${this._hilite(todo.text, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
         </span>
       </button>
@@ -309,15 +320,15 @@ window.ModSearch = {
   },
 
   _supplyRowHtml(r, q){
-    const { ev, day, member, item } = r;
+    const { ev, day, week, member, item } = r;
     const color = CFILL(ev.c).fill;
     const startMin = toMin(ev.s);
     const meta = `${esc(ev.t)} · ${esc(member.name)} · ${DAYS[day][0]}요일 ${this._ampm(startMin)} ${disp(startMin)}`;
     return `
-      <button type="button" class="sr-row" data-kind="supply" data-member="${member.id}" data-day="${day}" data-id="${ev.id}">
+      <button type="button" class="sr-row" data-kind="supply" data-member="${member.id}" data-day="${day}" data-week="${week}" data-id="${ev.id}">
         <span class="sr-dot" style="background:${color}"></span>
         <span class="sr-row-main">
-          <span class="sr-row-title">${this._hilite(item, q)}</span>
+          <span class="sr-row-title">${this._hilite(item, q)}${this._wkBadge(week)}</span>
           <span class="sr-row-meta">${this._esc(meta)}</span>
         </span>
       </button>
@@ -327,15 +338,16 @@ window.ModSearch = {
   /* ---------- 이동 ---------- */
   _goToResult(ds){
     const day = +ds.day;
+    const week = +ds.week || 0;
     App.closeSheet();
     if(ds.kind === 'todo'){
       App.viewMember = ds.member;
       App.go('todo');
-      App.setDay(day);
+      App.setDay(day, undefined, week);
     } else {
       App.viewMember = ds.member;
       App.view = 'day';
-      App.setDay(day);
+      App.setDay(day, undefined, week);
       App.openCard = ds.id;
       App.render();
     }
@@ -381,7 +393,7 @@ window.ModSearch = {
 
   _isDup(tpl){
     const days = this._daySelected && this._daySelected.size ? [...this._daySelected] : [App.day];
-    return days.some(d => (App.sched()[d] || []).some(ev => ev.t === tpl.t));
+    return days.some(d => App.evs(d).some(ev => ev.t === tpl.t));
   },
 
   _tplGridHtml(){
@@ -475,7 +487,7 @@ window.ModSearch = {
 
     let count = 0;
     days.forEach(d => {
-      const list = App.sched()[d] = App.sched()[d] || [];
+      const list = App.bucket(d);
       tpls.forEach(tpl => {
         if(list.some(ev => ev.t === tpl.t)) return;
         list.push({

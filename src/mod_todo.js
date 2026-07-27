@@ -63,8 +63,13 @@ window.ModTodo = {
     .td-quickadd-inp:focus{ outline:none; }
 
     /* ---- 리스트 ---- */
-    .td-list-head{ display:flex; justify-content:flex-end; margin-bottom:8px; }
-    .td-add-btn{ font-size:12.5px; padding:8px 14px; height:auto; min-height:36px; }
+    .td-list-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+    .td-add-btn{ font-size:12.5px; padding:8px 14px; height:auto; min-height:36px; flex:0 0 auto; }
+    /* 주 전환은 코어의 .wknav 모양을 그대로 쓰고, 높이만 이 줄에 맞춘다 */
+    .td-weeknav{ flex:0 0 auto; }
+    .td-weeknav button{ min-height:36px; }
+    .td-weekhint{ font-size:12px; font-weight:700; color:var(--indigo); margin:-4px 0 12px; }
+    #phone.th-dark .td-weekhint{ color:#B7AEFF; }
     .td-group-divider{
       display:flex; align-items:center; gap:8px; margin:14px 0 8px; color:var(--muted);
       font-size:11.5px; font-weight:800;
@@ -193,10 +198,20 @@ window.ModTodo = {
 
   _celebrated: {},
 
+  /* '오늘' / '수요일' / '다음 주 수요일' — 지금 보고 있는 칸을 한마디로 */
+  _scopeLabel(w, day){
+    const d = (day == null) ? App.day : day;
+    const ww = (w == null) ? App.week : (w ? 1 : 0);
+    if(ww) return `다음 주 ${DAYS[d][0]}요일`;
+    if(d === App.today) return '오늘';
+    return `${DAYS[d][0]}요일`;
+  },
+
   render(root){
     const day = App.day;
+    const week = App.week ? 1 : 0;
     const isChildView = App.roleOf(App.vm()) === 'child';
-    const list = App.todosOf(day);
+    const list = App.todosOf(day);   // 지금 보고 있는 주 기준
     const visible = list.filter(t => App.canSee(t));
     const totalCount = visible.length;
     const doneCount = visible.filter(t => t.done).length;
@@ -211,14 +226,18 @@ window.ModTodo = {
     root.innerHTML = `
       <div class="td-wrap">
         ${this._daysStripHtml()}
-        ${this._summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView })}
-        ${App.canSetCoin() ? this._quickAddHtml() : ''}
+        ${this._summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView, week })}
+        ${App.canSetCoin() ? this._quickAddHtml(week) : ''}
         <div class="td-list">
           <div class="td-list-head">
+            ${this._weekNavHtml(week)}
             <button type="button" class="btn ghost td-add-btn">+ 새 할 일 추가</button>
           </div>
           ${list.length === 0
-            ? `<div class="empty-note"><div class="big">🍃</div>오늘은 할 일이 없어요!</div>`
+            ? `<div class="empty-note"><div class="big">${week ? '🌱' : '🍃'}</div>${
+                week ? '다음 주 할 일을 미리 적어둘 수 있어요'
+                     : (day === App.today ? '오늘은 할 일이 없어요!' : `${DAYS[day][0]}요일은 할 일이 없어요`)
+              }</div>`
             : `
               ${incomplete.map(t => this._itemHtml(t)).join('')}
               ${completed.length > 0
@@ -237,6 +256,8 @@ window.ModTodo = {
     const canSetCoin = App.canSetCoin();
     const coinPresets = [5, 10, 15, 20, 25, 30];
     const day = editing ? editing.day : App.day;
+    /* 수정할 때는 그 할 일이 들어 있는 주, 새로 만들 때는 지금 보고 있는 주 */
+    const week = editing ? ((editing.w || 0) ? 1 : 0) : (App.week ? 1 : 0);
     const coin = editing ? (editing.coin || 0) : 0;
     const secret = editing ? !!editing.secret : false;
     const text = editing ? editing.text : '';
@@ -268,7 +289,8 @@ window.ModTodo = {
       </div>
       ${coinFieldHtml}
       <div class="field">
-        <label>요일 선택</label>
+        <label>${week ? '다음 주 요일 선택' : '요일 선택'}</label>
+        ${week ? '<div class="td-weekhint">다음 주에 할 일이 생겨요</div>' : ''}
         <div class="td-day-chips" id="td-ed-days">
           ${DAYS.map((d, i) => `<button type="button" class="pill td-daysel-chip ${i === day ? 'on' : ''}" data-dsel="${i}">${d[0]}</button>`).join('')}
         </div>
@@ -287,7 +309,11 @@ window.ModTodo = {
       <button type="button" class="btn full" id="td-ed-save">${editing ? '수정 완료' : '할 일 등록'}</button>
     `;
 
-    App.sheet(editing ? '할 일 수정' : '할 일 등록', body, foot, (bodyEl, footEl) => {
+    const sheetTitle = editing
+      ? (week ? '다음 주 할 일 수정' : '할 일 수정')
+      : (week ? '다음 주 할 일 등록' : '할 일 등록');
+
+    App.sheet(sheetTitle, body, foot, (bodyEl, footEl) => {
       let selDay = day;
       let selCoin = coin;
       let selSecret = secret;
@@ -343,6 +369,7 @@ window.ModTodo = {
           App.state.todos.push({
             id: uid(),
             day: selDay,
+            w: week,                 // 0 = 이번 주, 1 = 다음 주
             for: App.vm(),
             text: val,
             coin: canSetCoin ? selCoin : 0,
@@ -362,9 +389,11 @@ window.ModTodo = {
     return `
       <div class="td-days">
         ${DAYS.map((d, i) => {
+          /* App.todosOf(i) 는 지금 보고 있는 주 기준이라 그대로 쓴다 */
           const cnt = App.todosOf(i).filter(t => App.canSee(t) && !t.done).length;
+          const isToday = !App.week && i === App.today;   // '오늘'은 이번 주에만 있다
           return `
-            <button type="button" class="td-day-chip ${i === App.day ? 'on' : ''} ${i === App.today ? 'today' : ''}" data-day="${i}">
+            <button type="button" class="td-day-chip ${i === App.day ? 'on' : ''} ${isToday ? 'today' : ''}" data-day="${i}">
               <span class="td-day-label">${d[0]}</span>
               ${cnt > 0 ? `<span class="td-day-dot">${cnt > 9 ? '9+' : cnt}</span>` : ''}
             </button>
@@ -374,13 +403,29 @@ window.ModTodo = {
     `;
   },
 
-  _summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView }){
+  /* 이번 주 / 다음 주 전환 — 코어의 .wknav 스타일(선택 = 테두리 + 컬러)을 그대로 쓴다 */
+  _weekNavHtml(week){
+    return `
+      <div class="wknav td-weeknav" id="td-weeknav">
+        <button type="button" data-wk="0" class="${week ? '' : 'on'}">이번 주</button>
+        <button type="button" data-wk="1" class="${week ? 'on' : ''}">다음 주</button>
+      </div>
+    `;
+  },
+
+  _summaryHtml({ doneCount, totalCount, totalCoins, earnedCoins, pct, allDone, isChildView, week }){
     const member = App.member();
+    const name = this._esc(member.name);
     const showCoinMetrics = isChildView && totalCoins > 0;
+    const scope = this._scopeLabel(week);   // '오늘' / '수요일' / '다음 주 수요일'
     const title = allDone
-      ? (isChildView ? '오늘 할 일 다 끝냈어요! 🎉' : `${member.name}의 할 일을 다 끝냈어요! 🎉`)
-      : (isChildView ? '오늘의 할 일' : `${member.name}의 할 일`);
-    const sub = allDone ? '정말 최고예요!' : (totalCount > 0 ? `${totalCount - doneCount}개 남았어요` : '아직 할 일이 없어요');
+      ? (isChildView ? `${scope} 다 끝냈어요! 🎉` : `${name}의 ${scope} 다 끝냈어요! 🎉`)
+      : (isChildView ? `${scope} 할 일` : `${name}의 ${scope} 할 일`);
+    const sub = allDone
+      ? '정말 최고예요!'
+      : (totalCount > 0
+          ? `${totalCount - doneCount}개 남았어요`
+          : (week ? '미리 적어두면 다음 주가 편해요' : '아직 할 일이 없어요'));
 
     return `
       <div class="panel td-summary ${allDone ? 'td-summary--done' : ''}">
@@ -395,7 +440,7 @@ window.ModTodo = {
             <div class="td-summary-sub">${sub}</div>
             ${showCoinMetrics ? `
               <div class="td-summary-metrics">
-                <span class="td-metric">오늘 모을 수 있는 코인 <b>🪙 ${totalCoins}</b></span>
+                <span class="td-metric">${scope} 모을 수 있는 코인 <b>🪙 ${totalCoins}</b></span>
                 <span class="td-metric">지금까지 모은 코인 <b>🪙 ${earnedCoins}</b></span>
               </div>
             ` : ''}
@@ -406,11 +451,12 @@ window.ModTodo = {
     `;
   },
 
-  _quickAddHtml(){
+  _quickAddHtml(week){
+    const ph = week ? '다음 주 할 일을 미리 내주세요 (Enter로 추가)' : '아이에게 할 일을 내주세요 (Enter로 추가)';
     return `
       <div class="td-quickadd">
         <span class="td-quickadd-icon">✏️</span>
-        <input type="text" class="inp td-quickadd-inp" placeholder="아이에게 할 일을 내주세요 (Enter로 추가)" maxlength="40" />
+        <input type="text" class="inp td-quickadd-inp" placeholder="${ph}" maxlength="40" />
       </div>
     `;
   },
@@ -455,8 +501,18 @@ window.ModTodo = {
   _bind(root){
     root.querySelectorAll('[data-day]').forEach(chip => {
       chip.addEventListener('click', () => {
-        App.day = Number(chip.dataset.day);
-        App.render();
+        /* 보고 있는 주는 그대로 두고 요일만 옮긴다 */
+        App.setDay(Number(chip.dataset.day));
+      });
+    });
+
+    root.querySelectorAll('#td-weeknav [data-wk]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const w = Number(btn.dataset.wk);
+        if((App.week ? 1 : 0) === w) return;
+        App.goWeek(w);
+        App.haptic && App.haptic();
+        App.toast(w ? '다음 주 할 일이에요' : '이번 주 할 일이에요');
       });
     });
 
@@ -500,6 +556,7 @@ window.ModTodo = {
           App.state.todos.push({
             id: uid(),
             day: App.day,
+            w: App.week ? 1 : 0,     // 지금 보고 있는 주에 넣는다
             for: App.vm(),
             text: val,
             coin: App.canSetCoin() ? 10 : 0,
@@ -508,7 +565,7 @@ window.ModTodo = {
             owner: App.meId()
           });
           App.save();
-          App.toast('할 일을 냈어요!');
+          App.toast(App.week ? '다음 주 할 일을 냈어요!' : '할 일을 냈어요!');
           App.render();
         }
       });
@@ -530,9 +587,11 @@ window.ModTodo = {
     if(willBeDone) window.ModSound && ModSound.play('check');
     if(willBeDone && t.coin > 0) window.ModSound && ModSound.play('coin');
 
-    const dayTodos = App.todosOf(t.day).filter(x => App.canSee(x));
+    /* 그 할 일이 들어 있는 주 기준으로 센다 (예전 데이터는 w 가 없으니 0) */
+    const tw = (t.w || 0) ? 1 : 0;
+    const dayTodos = App.todosOf(t.day, tw).filter(x => App.canSee(x));
     const remaining = dayTodos.filter(x => !x.done).length;
-    const key = `${App.vm()}_${t.day}`;
+    const key = `${App.vm()}_${tw}_${t.day}`;
     this._celebrated = this._celebrated || {};
 
     if(willBeDone){
@@ -544,7 +603,7 @@ window.ModTodo = {
       if(dayTodos.length > 0 && remaining === 0 && !this._celebrated[key]){
         this._celebrated[key] = true;
         const coinTotal = dayTodos.reduce((s, x) => s + (x.coin || 0), 0);
-        this._celebrate(coinTotal);
+        this._celebrate(coinTotal, this._scopeLabel(tw, t.day));
       }
     } else {
       this._celebrated[key] = false;
@@ -555,7 +614,7 @@ window.ModTodo = {
     App.render();
   },
 
-  _celebrate(coinTotal){
+  _celebrate(coinTotal, scopeLabel){
     window.ModSound && ModSound.play('complete');
     const phone = document.getElementById('phone');
     if(!phone) return;
@@ -582,7 +641,7 @@ window.ModTodo = {
       ${confettiHtml}
       <div class="td-cele-card">
         <div class="td-cele-emoji">🎉</div>
-        <div class="td-cele-title">오늘 할 일 완료!</div>
+        <div class="td-cele-title">${this._esc(scopeLabel || '오늘')} 할 일 완료!</div>
         ${coinTotal > 0 ? `<div class="td-cele-coin">🪙 ${coinTotal}코인 모았어요</div>` : ''}
         <button type="button" class="btn full td-cele-go">보상 받으러 가기 →</button>
       </div>

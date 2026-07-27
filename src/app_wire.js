@@ -2,10 +2,10 @@
 window.App=App; window.PALETTE=PALETTE; window.DAYS=DAYS;
 
 App.editSchedule=function(id,presetStart){
-  const S=this.sched();
-  const list=S[this.day]||(S[this.day]=[]);
+  const list=this.bucket();           /* 지금 보는 주의 바구니 */
+  const view=this.evs();               /* 반복까지 포함한 화면 목록 */
   const who=this.member();
-  const ev=id?list.find(x=>x.id===id):null;
+  const ev=id?view.find(x=>x.id===id):null;
   if(id&&!ev)id=null;
   if(ev&&!this.canSee(ev)){this.toast('🔒 작성자만 볼 수 있는 일정이에요');return;}
   const d=ev||{s:presetStart||'15:00',e:presetStart?toStr(Math.min(23*60,toMin(presetStart)+60)):'16:00',t:'',c:'lime',alarm:true,memo:'',items:[],secret:false};
@@ -79,7 +79,14 @@ App.editSchedule=function(id,presetStart){
     b.querySelectorAll('#fA,#fRep,#fSec').forEach(t=>t.onclick=e=>e.currentTarget.classList.toggle('on'));
     const del=b.querySelector('#fDel');
     if(del)del.onclick=()=>{
-      S[this.day]=list.filter(x=>x.id!==id);
+      /* 다음 주에서 반복 일정을 지우면 그 주에서만 뺀다 */
+      if(this.isBorrowed(id,this.day)){
+        (this.state.hiddenNext=this.state.hiddenNext||{})[this.hideKey(this.day,id)]=1;
+        this.save();this.closeSheet();this.render();
+        return this.toast('다음 주에서만 뺐어요 · 이번 주는 그대로예요');
+      }
+      const k=this.dk();
+      this.sched()[k]=(this.sched()[k]||[]).filter(x=>x.id!==id);
       this.save();this.closeSheet();this.render();this.toast('일정을 삭제했어요');
     };
     f.querySelector('#fCancel').onclick=()=>this.closeSheet();
@@ -98,7 +105,7 @@ App.editSchedule=function(id,presetStart){
       if(id){Object.assign(ev,base);}
       else{
         (days.length?days:[this.day]).forEach(dy=>{
-          (S[dy]=S[dy]||[]).push(Object.assign({id:uid()},base));
+          this.bucket(dy).push(Object.assign({id:uid()},base));
         });
       }
       this.save();this.closeSheet();this.openCard=null;this.render();
@@ -515,12 +522,12 @@ App.openSim=function(){
     if(App.tab==='todo'&&window.ModTodo&&ModTodo.openEditor)ModTodo.openEditor(null);
     else App.editSchedule(null);
   };
-  document.getElementById('btnToday').onclick=()=>{App.setDay(App.today);setTimeout(()=>App.scrollToNow(),120)};
+  document.getElementById('btnToday').onclick=()=>{App.setDay(App.today,undefined,0);setTimeout(()=>App.scrollToNow(),120)};
 
   App.pickDay=function(){
     this.sheet('요일 선택',`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
       ${DAYS.map((x,i)=>{
-        const n=(this.sched()[i]||[]).length;
+        const n=this.evs(i).length;
         return `<button class="dpick ${i===this.day?'on':''}" data-d="${i}">
           <b>${x[0]}</b><span>${x[1]}</span><i>${n}개</i>${i===this.today?'<u>오늘</u>':''}</button>`;
       }).join('')}
@@ -543,13 +550,13 @@ App.openSim=function(){
   stage.addEventListener('touchend',e=>{
     if(x0===null||App.tab!=='time'||App.view!=='day')return;
     const dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
-    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){const dir=dx<0?1:-1;App.setDay(App.day+dir,dir);App.haptic();if(window.ModSound)ModSound.play('tap');}
+    if(Math.abs(dx)>62&&Math.abs(dx)>Math.abs(dy)*1.8){const dir=dx<0?1:-1;App.stepDay(dir);App.haptic();if(window.ModSound)ModSound.play('tap');}
     x0=null;
   },{passive:true});
   document.addEventListener('keydown',e=>{
     if(App.tab!=='time')return;
-    if(e.key==='ArrowRight')App.setDay(App.day+1,1);
-    if(e.key==='ArrowLeft')App.setDay(App.day-1,-1);
+    if(e.key==='ArrowRight')App.stepDay(1);
+    if(e.key==='ArrowLeft')App.stepDay(-1);
     if(e.key==='Escape')App.closeSheet();
   });
 

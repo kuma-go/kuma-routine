@@ -122,20 +122,28 @@ window.ModReport = {
     this._raf2 = null;
   },
 
-  /* ================= 데이터 집계 ================= */
-  _weekData(memberId){
+  /* ================= 데이터 집계 =================
+     리포트는 이번 주 기준(w=0)이다. 다음 주에 넣어둔 일정이나 반복 일정의
+     "다음 주 얹힘"이 이번 주 성취에 섞이면 안 되므로 App.evs(d, 0, memberId) 로 고정해서 읽는다.
+     archive=true 이면 지난 주 스냅샷(App.state.archive)에서 할 일만 집계한다
+     (스케줄/준비물은 rollWeeks() 때 보존되지 않으므로 지난 주 리포트에는 포함하지 않는다). */
+  _weekData(memberId, archive){
     const days = [];
     let totalTodos = 0, doneTodos = 0, totalItems = 0, packedItemsCount = 0, totalEvents = 0, alarmOnEvents = 0;
-    const schedAll = App.sched(memberId) || {};
     const itemTitleStats = {};
+    const todosSource = archive
+      ? (App.state.archive && App.state.archive.todos || []).filter(t => (t.w || 0) === 0)
+      : null;
 
     for(let d = 0; d < 7; d++){
-      const todosDay = App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t));
+      const todosDay = archive
+        ? todosSource.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && App.canSee(t))
+        : App.state.todos.filter(t => (t.for || App.defaultTodoOwner()) === memberId && t.day === d && (t.w || 0) === 0 && App.canSee(t));
       const doneDay = todosDay.filter(t => t.done);
       const coinDay = doneDay.reduce((s, t) => s + (t.coin || 0), 0);
       totalTodos += todosDay.length; doneTodos += doneDay.length;
 
-      const evs = (schedAll[d] || []).filter(ev => App.canSee(ev));
+      const evs = archive ? [] : App.evs(d, 0, memberId).filter(ev => App.canSee(ev));
       totalEvents += evs.length;
       alarmOnEvents += evs.filter(ev => ev.alarm).length;
 
@@ -164,7 +172,7 @@ window.ModReport = {
       });
     }
 
-    return { days, totalTodos, doneTodos, totalItems, packedItemsCount, totalEvents, alarmOnEvents, itemTitleStats };
+    return { days, totalTodos, doneTodos, totalItems, packedItemsCount, totalEvents, alarmOnEvents, itemTitleStats, archive:!!archive };
   },
 
   _score(wd){
@@ -231,9 +239,9 @@ window.ModReport = {
   },
 
   /* ================= 마크업 ================= */
-  _headHtml(member, score, grade){
+  _headHtml(member, score, grade, archive){
     const scoreHtml = score == null
-      ? `<div class="rp-score-empty">이번 주엔 기록된 활동이 아직 없어요</div>`
+      ? `<div class="rp-score-empty">${archive ? '지난 주엔 기록된 활동이 없어요' : '이번 주엔 기록된 활동이 아직 없어요'}</div>`
       : `<div class="rp-score-num">${score}<span class="unit">점</span></div><div class="rp-grade">${grade.label}</div>`;
     return `
       <div class="rp-head">
@@ -241,7 +249,7 @@ window.ModReport = {
           <div class="rp-head-av">${esc(member.emoji || '🙂')}</div>
           <div>
             <div class="rp-head-name">${this._esc(member.name)}</div>
-            <div class="rp-head-sub">이번 주 리포트</div>
+            <div class="rp-head-sub">${archive ? '지난 주 리포트' : '이번 주 리포트'}</div>
           </div>
         </div>
         <div class="rp-score-wrap">${scoreHtml}</div>
@@ -280,7 +288,7 @@ window.ModReport = {
     const daysRow = wd.days.map(d => `<span class="${d.day === App.today ? 'today' : ''}">${DAYS[d.day][0]}</span>`).join('');
     return `
       <div class="rp-coin-card">
-        <div class="rp-coin-total">이번 주 누적 <b>${totalCoin}</b>코인 모았어요</div>
+        <div class="rp-coin-total">${wd.archive ? '지난 주' : '이번 주'} 누적 <b>${totalCoin}</b>코인 모았어요</div>
         <svg class="rp-coin-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
           <polyline class="rp-line" points="${lineStr}"></polyline>
           ${circles}
@@ -299,7 +307,7 @@ window.ModReport = {
       : `<div class="rp-ring-num">–</div><div class="rp-ring-pct">기록 없음</div>`;
     let subText;
     if(!wd.totalItems){
-      subText = '이번 주엔 준비물이 있는 일정이 없어요';
+      subText = wd.archive ? '지난 주 준비물 기록은 남아있지 않아요' : '이번 주엔 준비물이 있는 일정이 없어요';
     } else if(prepRate >= 0.8){
       subText = '이번 주 준비물 챙기기, 잘 해내고 있어요';
     } else if(prepRate >= 0.4){
@@ -353,11 +361,11 @@ window.ModReport = {
     `).join('')}</div>`;
   },
 
-  _compareHtml(){
+  _compareHtml(archive){
     if(!App.can('editOthers')) return '';
     const children = App.state.members.filter(m => m.role === 'child');
     if(children.length < 2) return '';
-    const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id)) }));
+    const rows = children.map(m => ({ m, score:this._score(this._weekData(m.id, archive)) }));
     const rowsHtml = rows.map(r => `
       <div class="rp-cmp-row">
         <div class="rp-cmp-name">${esc(r.m.emoji || '🙂')} ${this._esc(r.m.name)}</div>
@@ -373,8 +381,9 @@ window.ModReport = {
     `;
   },
 
-  /* ================= 진입점 ================= */
-  open(memberId){
+  /* ================= 진입점 =================
+     archive=true 면 App.state.archive(지난 주 스냅샷)로 보여준다. */
+  open(memberId, archive){
     if(this._raf1) cancelAnimationFrame(this._raf1);
     if(this._raf2) cancelAnimationFrame(this._raf2);
     this._token = (this._token || 0) + 1;
@@ -384,12 +393,15 @@ window.ModReport = {
     const member = App.member(mid);
     if(!member) return App.toast('멤버를 찾을 수 없어요');
 
-    const wd = this._weekData(mid);
+    const showArchive = !!archive && !!App.state.archive;
+    if(archive && !App.state.archive){ App.toast('지난 주 기록이 아직 없어요'); return; }
+
+    const wd = this._weekData(mid, showArchive);
     const score = this._score(wd);
     const grade = this._grade(score);
 
     const body = `
-      ${this._headHtml(member, score, grade)}
+      ${this._headHtml(member, score, grade, showArchive)}
       <div class="rp-sec">
         <div class="rp-sec-h">요일별 할 일 완료율</div>
         ${this._barsHtml(wd)}
@@ -406,13 +418,18 @@ window.ModReport = {
         <div class="rp-sec-h">잘한 점 · 도와줄 점</div>
         ${this._insightsHtml(wd)}
       </div>
-      ${this._compareHtml()}
+      ${this._compareHtml(showArchive)}
     `;
 
-    const foot = `
-      <button type="button" class="btn line rp-foot-btn" id="rpLastWeek">지난 주 보기</button>
-      <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
-    `;
+    const foot = showArchive
+      ? `
+        <button type="button" class="btn line rp-foot-btn" id="rpThisWeek">이번 주 보기</button>
+        <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
+      `
+      : `
+        <button type="button" class="btn line rp-foot-btn" id="rpLastWeek">지난 주 보기</button>
+        <button type="button" class="btn full" id="rpShare">리포트 공유하기</button>
+      `;
 
     App.sheet(`${esc(member.name)}의 주간 리포트`, body, foot, (b, f) => {
       this._raf1 = requestAnimationFrame(() => {
@@ -432,7 +449,13 @@ window.ModReport = {
       });
       const lastBtn = f.querySelector('#rpLastWeek');
       if(lastBtn) lastBtn.addEventListener('click', () => {
-        App.toast('지난 주 기록이 아직 없어요');
+        if(App.haptic) App.haptic();
+        this.open(mid, true);
+      });
+      const thisBtn = f.querySelector('#rpThisWeek');
+      if(thisBtn) thisBtn.addEventListener('click', () => {
+        if(App.haptic) App.haptic();
+        this.open(mid, false);
       });
     });
   },
