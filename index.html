@@ -55,7 +55,7 @@ input,textarea,select{font-family:inherit;font-size:15px;color:inherit}
 
 /* ========== AD ========== */
 .ad{
-  flex:0 0 auto; height:46px; margin:8px 10px 0; border-radius:var(--r-s);
+  flex:0 0 auto; height:56px; margin:8px 10px 0; border-radius:var(--r-s);
   background:linear-gradient(180deg,#EEF0F8,#E2E5F1);
   display:flex; align-items:center; justify-content:center;
   font-weight:800; font-size:13px; letter-spacing:.22em; color:#FFF;
@@ -5743,11 +5743,56 @@ window.ModTheme = (function(){
   let carouselTimer = null;
   let transitionTimer = null;
 
+  /* 광고 아트워크 — 외부 이미지 없이 인라인 SVG 로 그린다 */
+  const ART = {
+    chess: `<svg viewBox="0 0 44 34" aria-hidden="true">
+      <defs>
+        <linearGradient id="adChessBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2B2A38"/><stop offset="1" stop-color="#15141C"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="44" height="34" rx="9" fill="url(#adChessBg)"/>
+      <g opacity=".26" fill="#fff">
+        <rect x="4"  y="25" width="6" height="5"/><rect x="16" y="25" width="6" height="5"/>
+        <rect x="28" y="25" width="6" height="5"/><rect x="10" y="20" width="6" height="5"/>
+        <rect x="22" y="20" width="6" height="5"/><rect x="34" y="20" width="6" height="5"/>
+      </g>
+      <g fill="#F4F2FF">
+        <path d="M13 24h8l-1-3h-6z"/><circle cx="17" cy="12.6" r="3.1"/>
+        <path d="M14.4 20.6c0-2.6 1.1-4.2 2.6-5.2 1.5 1 2.6 2.6 2.6 5.2z"/>
+      </g>
+      <g fill="#8A7DFF">
+        <path d="M23 24h8l-1-3h-6z"/>
+        <path d="M27.6 9.6c-2.6 0-4.4 1.7-4.4 4.1 0 1.6.9 2.3.9 3.2 0 1.4-.7 2.3-.7 3.7h6.4c.2-3.1 1.6-4.3 1.6-6.5 0-2.7-1.5-4.5-3.8-4.5z"/>
+        <circle cx="24.4" cy="12.4" r="0.9" fill="#15141C"/>
+      </g>
+    </svg>`,
+    mall: `<svg viewBox="0 0 44 34" aria-hidden="true">
+      <defs>
+        <linearGradient id="adMallBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2FCB7A"/><stop offset="1" stop-color="#12A65E"/>
+        </linearGradient>
+        <linearGradient id="adMallBag" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E7FFF2"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="44" height="34" rx="9" fill="url(#adMallBg)"/>
+      <g opacity=".18" stroke="#fff" stroke-width="1.6" fill="none">
+        <circle cx="37" cy="7" r="9"/><circle cx="6" cy="29" r="7"/>
+      </g>
+      <path d="M14 13h16l-1.6 13.4a2 2 0 0 1-2 1.8H17.6a2 2 0 0 1-2-1.8z" fill="url(#adMallBag)"/>
+      <path d="M18.4 13.4v-2.2a3.6 3.6 0 0 1 7.2 0v2.2" fill="none" stroke="#0E8F51" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M19.4 20.4l2.2 2.3 4.2-4.4" fill="none" stroke="#12A65E" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`
+  };
+
   const ADS = [
-    { emoji:'📚', text:'○○학습지 · 초등 전과목 하루 10분 습관', cta:'무료체험' },
-    { emoji:'🍯', text:'튼튼영양제 · 성장기 아이를 위한 맞춤 영양', cta:'더보기' },
-    { emoji:'🎠', text:'○○키즈카페 · 이번 주말 2+1 이벤트', cta:'예약하기' },
-    { emoji:'🎨', text:'○○미술학원 · 신규 등록 첫 달 반값', cta:'상담신청' }
+    { art:'chess', title:'쿠마체스',
+      text:'한 화면, 두 사람, 마주 보는 한 판',
+      cta:'하러가기', url:'https://kumachess.com' },
+    { art:'mall', title:'DSP Mall',
+      text:'합리적인 가격, 꼭 필요한 아이템! 종합 쇼핑몰',
+      cta:'구경하기', url:'https://smartstore.naver.com/dspartners26' }
   ];
 
   /* ---------- helpers ---------- */
@@ -5787,12 +5832,17 @@ window.ModTheme = (function(){
 
   /* ---------- ad slot ---------- */
   function renderAdItem(a){
-    return `<button type="button" class="ad-item">
-      <span class="ad-emoji">${a.emoji}</span>
-      <span class="ad-text">${a.text}</span>
+    return `<a class="ad-item" href="${a.url}" target="_blank" rel="noopener noreferrer nofollow">
+      <span class="ad-art">${ART[a.art] || ''}</span>
+      <span class="ad-body">
+        <span class="ad-title">${a.title}</span>
+        <span class="ad-text">${a.text}</span>
+      </span>
       <span class="ad-cta">${a.cta}</span>
-    </button>`;
+    </a>`;
   }
+
+  const AD_H = 56;
 
   function stopCarousel(){
     if(carouselTimer){ clearInterval(carouselTimer); carouselTimer = null; }
@@ -5804,7 +5854,7 @@ window.ModTheme = (function(){
     carouselTimer = setInterval(()=>{
       idx++;
       track.style.transition = 'transform .5s cubic-bezier(.22,1,.36,1)';
-      track.style.transform = 'translateY(-' + (idx * 46) + 'px)';
+      track.style.transform = 'translateY(-' + (idx * AD_H) + 'px)';
       if(idx === ADS.length){
         setTimeout(()=>{
           track.style.transition = 'none';
@@ -5830,8 +5880,8 @@ window.ModTheme = (function(){
     `;
     ad.classList.toggle('ad-hide', !!App.state.adFree);
 
-    ad.querySelectorAll('.ad-item').forEach(btn=>{
-      btn.addEventListener('click', ()=>{ App.toast('프로토타입이라 링크는 열리지 않아요'); });
+    ad.querySelectorAll('.ad-item').forEach(el=>{
+      el.addEventListener('click', ()=>{ if(window.ModSound) ModSound.play('tap'); });
     });
     const closeBtn = ad.querySelector('#thAdClose');
     if(closeBtn) closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openSubscribeSheet(); });
@@ -6088,17 +6138,26 @@ window.ModTheme = (function(){
         background:rgba(255,255,255,.6); padding:1.5px 4px; border-radius:4px;
       }
       #phone.th-dark .ad-label{ background:rgba(0,0,0,.4); color:rgba(200,205,235,.9); }
-      .ad-viewport{ flex:1; position:relative; overflow:hidden; margin:0 32px 0 28px; }
+      .ad-viewport{ flex:1; position:relative; overflow:hidden; margin:0 26px 0 26px; }
       .ad-track{ position:absolute; left:0; right:0; top:0; will-change:transform; }
       .ad-item{
-        height:46px; width:100%; display:flex; align-items:center; gap:7px; padding:0 2px;
-        font-size:11.5px; font-weight:700; color:var(--ink2); text-align:left;
+        height:56px; width:100%; display:flex; align-items:center; gap:8px; padding:0 1px;
+        color:var(--ink2); text-align:left; text-decoration:none; -webkit-tap-highlight-color:transparent;
+        transition:transform .14s cubic-bezier(.22,1,.36,1);
       }
-      .ad-emoji{ font-size:16px; flex:0 0 auto; }
-      .ad-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ad-item:active{ transform:scale(.985); }
+      .ad-art{ flex:0 0 auto; width:40px; height:31px; display:block; }
+      .ad-art svg{ display:block; width:40px; height:31px; border-radius:8px;
+        box-shadow:0 2px 6px rgba(20,20,50,.16); }
+      .ad-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+      .ad-title{ font-size:11.5px; font-weight:800; color:var(--ink); letter-spacing:-.01em;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ad-text{ font-size:10px; font-weight:700; color:var(--muted); letter-spacing:-.02em;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .ad-cta{
-        flex:0 0 auto; font-size:10px; font-weight:800; color:var(--indigo);
-        background:rgba(255,255,255,.75); padding:3px 8px; border-radius:20px;
+        flex:0 0 auto; font-size:9.5px; font-weight:800; color:var(--indigo); letter-spacing:-.02em;
+        background:rgba(255,255,255,.8); padding:5px 9px; border-radius:20px; white-space:nowrap;
+        box-shadow:0 1px 3px rgba(20,20,50,.10);
       }
       #phone.th-dark .ad-cta{ background:rgba(0,0,0,.32); color:#B7AEFF; }
       .ad-close{
@@ -7745,7 +7804,7 @@ App.toMaster=function(after){
   this.sheet('부모 모드로 전환',`
     <p style="margin:0 0 4px;font-size:13.5px;color:var(--ink2);font-weight:600;line-height:1.6">
       보상과 할 일을 정하는 건 부모님만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.</p>
-    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">데모 PIN: ${pin}</p>
+    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${pin} 이에요</p>
     <div class="pinrow" id="pinDots">${[0,1,2,3].map(i=>`<i data-i="${i}"></i>`).join('')}</div>
     <div class="pinpad" id="pinPad">
       ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-k="${n}">${n}</button>`).join('')}
@@ -7807,10 +7866,10 @@ App.renderDrawer=function(){
       <button class="dr-item" data-act="sim"><span class="em">⏱</span>시간 미리보기 ${this.simNow!==null?'<span class="pill" style="background:var(--orange-s);color:var(--orange);margin-left:auto">'+disp(this.simNow)+'</span>':''}</button>
       <div class="hr"></div>
       <button class="dr-item" data-act="tour"><span class="em">✨</span>앱 소개 다시 보기</button>
-      <button class="dr-item" data-act="reset"><span class="em">↺</span>데모 초기화</button>
+      <button class="dr-item" data-act="reset"><span class="em">↺</span>데이터 초기화</button>
     </div>
     <div style="padding:14px 20px calc(18px + env(safe-area-inset-bottom));font-size:11px;color:var(--muted);font-weight:600;line-height:1.5">
-      KUMA routine · 프로토타입 v3<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
+      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
     </div>`;
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}

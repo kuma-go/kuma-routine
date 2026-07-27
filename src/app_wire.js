@@ -104,7 +104,7 @@ App.toMaster=function(after){
   this.sheet('부모 모드로 전환',`
     <p style="margin:0 0 4px;font-size:13.5px;color:var(--ink2);font-weight:600;line-height:1.6">
       보상과 할 일을 정하는 건 부모님만 할 수 있어요.<br>PIN 4자리를 입력해 주세요.</p>
-    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">데모 PIN: ${pin}</p>
+    <p style="margin:0 0 18px;font-size:11.5px;color:var(--muted);font-weight:700">처음 PIN은 ${pin} 이에요</p>
     <div class="pinrow" id="pinDots">${[0,1,2,3].map(i=>`<i data-i="${i}"></i>`).join('')}</div>
     <div class="pinpad" id="pinPad">
       ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-k="${n}">${n}</button>`).join('')}
@@ -166,10 +166,10 @@ App.renderDrawer=function(){
       <button class="dr-item" data-act="sim"><span class="em">⏱</span>시간 미리보기 ${this.simNow!==null?'<span class="pill" style="background:var(--orange-s);color:var(--orange);margin-left:auto">'+disp(this.simNow)+'</span>':''}</button>
       <div class="hr"></div>
       <button class="dr-item" data-act="tour"><span class="em">✨</span>앱 소개 다시 보기</button>
-      <button class="dr-item" data-act="reset"><span class="em">↺</span>데모 초기화</button>
+      <button class="dr-item" data-act="reset"><span class="em">↺</span>데이터 초기화</button>
     </div>
     <div style="padding:14px 20px calc(18px + env(safe-area-inset-bottom));font-size:11px;color:var(--muted);font-weight:600;line-height:1.5">
-      KUMA routine · 프로토타입 v3<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
+      KUMA routine · v1.0<br>일정 · 준비물 · 할 일 · 보상을 한 곳에서
     </div>`;
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}
