@@ -111,11 +111,11 @@ App.editSchedule=function(id,presetStart){
 App.shareSheet=function(){
   const code=this.exportCode();
   const size=Math.round(code.length/1024*10)/10;
-  this.sheet('가족과 함께 쓰기',`
+  this.sheet('코드로 내보내기 · 가져오기',`
     <p style="margin:0 0 16px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
-      아직 계정 서버가 없어서 <b>자동 동기화는 되지 않아요.</b><br>
-      대신 아래 <b>가족 코드</b>를 복사해 카톡 등으로 보내면,<br>
-      받은 사람이 붙여넣어 우리 가족 일정을 그대로 가져갈 수 있어요.
+      실시간 동기화 없이 <b>한 번만 옮기고 싶을 때</b> 쓰는 방법이에요.
+      기기를 바꾸거나 백업할 때도 좋아요.<br>
+      실시간으로 같이 쓰려면 <b>메뉴 → 가족 그룹 · 동기화</b> 를 이용하세요.
     </p>
     <div class="field">
       <label>가족 코드 <span style="color:var(--muted);font-weight:700">· ${size}KB</span></label>
@@ -176,25 +176,26 @@ App.checkInvite=function(){
     this.sheet('가족 초대를 받았어요',`
       <div style="text-align:center;padding:6px 0 18px">
         <div style="font-size:44px">👨‍👩‍👧</div>
-        <div style="font-size:19px;font-weight:800;margin-top:10px">초대 코드 ${esc(code)}</div>
+        <div style="font-size:13px;font-weight:800;color:var(--muted);margin-top:10px">초대 코드</div>
+        <div style="font-size:24px;font-weight:800;letter-spacing:.12em;font-family:'SFMono-Regular',Menlo,monospace">${esc(code)}</div>
       </div>
       <p style="margin:0 0 14px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.65">
-        이 앱은 아직 <b>계정 서버 없이 기기 안에서만</b> 동작해요.
-        그래서 초대 링크만으로는 상대방 일정이 자동으로 넘어오지 않아요.
-      </p>
-      <div class="panel" style="padding:14px 16px">
-        <div style="font-size:13px;font-weight:800;margin-bottom:8px">함께 쓰는 방법</div>
-        <ol style="margin:0;padding-left:18px;font-size:12.5px;font-weight:600;color:var(--ink2);line-height:1.9">
-          <li>초대한 사람이 <b>메뉴 → 가족과 함께 쓰기</b> 에서 가족 코드를 복사</li>
-          <li>그 코드를 카톡 등으로 전달</li>
-          <li>받은 사람이 같은 화면에서 <b>붙여넣고 가져오기</b></li>
-        </ol>
-      </div>`,
+        아래에서 <b>코드로 참여하기</b> 를 누르면 가족 일정을 함께 보게 돼요.
+        한쪽에서 일정을 바꾸면 다른 기기에 바로 반영됩니다.
+      </p>`,
       `<button class="btn line" id="ivLater" style="flex:0 0 96px">나중에</button>
-       <button class="btn full" id="ivGo">가족 코드 화면 열기</button>`,
+       <button class="btn full" id="ivGo">코드로 참여하기</button>`,
       (b,f)=>{
         f.querySelector('#ivLater').onclick=()=>this.closeSheet();
-        f.querySelector('#ivGo').onclick=()=>{this.closeSheet();setTimeout(()=>this.shareSheet(),260)};
+        f.querySelector('#ivGo').onclick=()=>{
+          this.closeSheet();
+          setTimeout(()=>{
+            if(window.ModSync){
+              ModSync.open();
+              setTimeout(()=>{const i=document.querySelector('#syCode');if(i){i.value=code;i.focus()}},420);
+            } else this.shareSheet();
+          },260);
+        };
       });
   },900);
 };
@@ -253,7 +254,8 @@ App.renderDrawer=function(){
       <button class="dr-item" data-go="todo"><span class="em">✅</span>할 일</button>
       <button class="dr-item" data-go="reward"><span class="em">🎁</span>보상 · 미니게임</button>
       <button class="dr-item" data-go="family"><span class="em">👥</span>가족 · 공유</button>
-      <button class="dr-item" data-act="share"><span class="em">🔗</span>가족과 함께 쓰기</button>
+      <button class="dr-item" data-act="sync"><span class="em">🔗</span>가족 그룹 · 동기화${window.ModSync&&ModSync.status()==='live'?'<span class="pill" style="background:rgba(63,191,127,.16);color:#1E7A50;margin-left:auto">연결됨</span>':''}</button>
+      <button class="dr-item" data-act="share"><span class="em">📋</span>코드로 내보내기</button>
       <div class="hr"></div>
       ${window.ModSearch?`<button class="dr-item" data-act="search"><span class="em">🔍</span>일정 · 할 일 검색</button>`:''}
       ${window.ModSearch?`<button class="dr-item" data-act="tpl"><span class="em">⚡</span>템플릿으로 빠른 추가</button>`:''}
@@ -279,6 +281,7 @@ App.renderDrawer=function(){
     const a=b.dataset.act;
     if(a==='role'){this.closeSheet(); m?this.toChild():this.toMaster();}
     if(a==='sim'){this.closeSheet();this.openSim();}
+    if(a==='sync'){this.closeSheet();window.ModSync?ModSync.open():this.toast('동기화를 불러올 수 없어요');}
     if(a==='share'){this.closeSheet();this.shareSheet();}
     if(a==='search'){this.closeSheet();window.ModSearch?ModSearch.open():this.toast('검색을 불러올 수 없어요');}
     if(a==='tpl'){this.closeSheet();window.ModSearch?ModSearch.openTemplates():this.toast('템플릿을 불러올 수 없어요');}

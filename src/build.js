@@ -21,6 +21,7 @@ const MODULES = [
   'mod_search.js',
   'mod_badge.js',
   'mod_sound.js',
+  'mod_sync.js',    // 가족 그룹 실시간 동기화
   'app_wire.js',    // 마지막: 모듈 등록과 부팅
 ];
 
