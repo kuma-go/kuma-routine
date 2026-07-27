@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 에디터
+.vscode/
+.idea/
+*.swp
+*~
+
+# 의존성 (이 저장소는 런타임 의존성이 없습니다)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 로컬 환경 / 비밀값 — 실수로라도 커밋되지 않도록
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.keystore
+secrets.*
+credentials.*
+
+# 임시 산출물
+tmp/
+*.log
+qa_*.png
+fz*_*.png
+v[0-9]_*.png
+_qa_*.js
+_qr_verify*.js
