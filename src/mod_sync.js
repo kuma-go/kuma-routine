@@ -10,6 +10,21 @@
  *
  * 설정이 없으면 아무것도 하지 않고 기존 로컬 모드로 동작한다.
  */
+/* ============================================================
+ *  운영자 설정 — 배포 전에 여기 두 줄만 채우면 됩니다.
+ *
+ *  Firebase 콘솔 → ⚙️ 프로젝트 설정 → 내 앱(웹) 에서 복사.
+ *  이 값들은 브라우저에 공개되는 "식별자"이지 비밀번호가 아닙니다.
+ *  실제 보호는 Realtime Database 보안 규칙과 API 키 제한으로 합니다.
+ *  (자세한 내용은 SYNC-SETUP.md)
+ *
+ *  비워두면 앱이 "각자 서버를 넣는 모드"로 동작합니다.
+ * ============================================================ */
+const KUMA_FIREBASE = {
+  apiKey: '',
+  dbUrl:  ''
+};
+
 window.ModSync = {
   css: `
     .sy-state{
@@ -74,19 +89,25 @@ window.ModSync = {
     if(this.enabled()) this.connect();
   },
 
+  /* 내장 설정이 있으면 그것을 쓰고, 없을 때만 사용자가 넣은 값을 쓴다 */
+  cfg(){
+    if(KUMA_FIREBASE.apiKey && KUMA_FIREBASE.dbUrl) return KUMA_FIREBASE;
+    const c = (App.state.sync || {}).cfg;
+    return (c && c.apiKey && c.dbUrl) ? c : null;
+  },
+  /* 앱에 서버가 내장돼 있는가 (사용자가 설정할 필요가 없는가) */
+  builtIn(){ return !!(KUMA_FIREBASE.apiKey && KUMA_FIREBASE.dbUrl); },
+
   enabled(){
     const s = App.state.sync || {};
-    return !!(s.on && s.cfg && s.cfg.apiKey && s.cfg.dbUrl && s.group);
+    return !!(s.on && this.cfg() && s.group);
   },
-  configured(){
-    const c = (App.state.sync || {}).cfg;
-    return !!(c && c.apiKey && c.dbUrl);
-  },
+  configured(){ return !!this.cfg(); },
   status(){ return this._status; },
 
   /* ================= 인증 ================= */
   async _auth(){
-    const c = App.state.sync.cfg;
+    const c = this.cfg();
     if(this._tok && Date.now() < this._expAt - 60000) return this._tok;
 
     let res, data;
@@ -119,7 +140,7 @@ window.ModSync = {
   },
 
   _url(path){
-    const base = String(App.state.sync.cfg.dbUrl).replace(/\/+$/,'');
+    const base = String(this.cfg().dbUrl).replace(/\/+$/,'');
     return base + path + '.json?auth=' + encodeURIComponent(this._tok);
   },
 
@@ -360,11 +381,19 @@ window.ModSync = {
            <button class="btn line full" id="syJoin">코드로 참여하기</button>
            <p class="sy-note">
              그룹을 만들면 이 기기의 일정이 그대로 올라가고,
-             참여하면 <b>그룹의 내용을 받아옵니다.</b>
+             참여하면 <b>그룹의 내용을 받아옵니다.</b><br>
+             한쪽에서 일정을 바꾸면 다른 기기에 바로 반영돼요.
            </p>
          `}
-         <button class="btn line full" id="syCfgBtn" style="margin-top:22px">서버 설정 바꾸기</button>`
+         ${this.builtIn() ? '' : `<button class="btn line full" id="syCfgBtn" style="margin-top:22px">서버 설정 바꾸기</button>`}`
       : `${this.stateHtml()}
+         <div class="panel" style="padding:13px 15px;margin-bottom:16px;background:var(--orange-s)">
+           <div style="font-size:12.5px;font-weight:800;color:var(--orange);line-height:1.6">
+             개발자 설정 화면이에요<br>
+             <span style="font-weight:700;color:var(--ink2)">배포본에서는 이 화면이 보이지 않습니다.
+             src/mod_sync.js 의 KUMA_FIREBASE 를 채우면 사용자는 바로 그룹을 만들 수 있어요.</span>
+           </div>
+         </div>
          <p style="margin:0 0 16px;font-size:13.5px;font-weight:600;color:var(--ink2);line-height:1.7">
            가족끼리 <b>실시간으로 같은 일정을 보려면</b> 무료 서버가 하나 필요해요.
            구글 Firebase 를 쓰면 카드 등록 없이 무료로 쓸 수 있습니다.

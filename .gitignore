@@ -34,3 +34,9 @@ v[0-9]_*.png
 _qa_*.js
 _qr_verify*.js
 kuma-routine-prototype.html
+
+# 동기화 키는 절대 커밋하지 않는다
+src/local-config.js
+firebase-config.*
+*.firebaserc
+.firebase/

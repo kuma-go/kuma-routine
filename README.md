@@ -125,7 +125,9 @@ node src/build.js
 초대 코드로 가족 그룹을 만들면 **한쪽에서 일정을 바꿀 때 다른 기기에 바로 반영**됩니다.
 Firebase Realtime Database 를 SDK 없이 REST + EventSource 로 붙였습니다.
 
-무료 서버를 한 번 연결하는 준비가 필요합니다 (5분) → **[SYNC-SETUP.md](SYNC-SETUP.md)**
+운영자가 무료 Firebase 를 한 번 연결하면 **사용자는 아무 설정 없이** 쓸 수 있습니다.
+키는 저장소에 커밋하지 않고 GitHub Secrets 에서 배포 시 주입합니다.
+→ **[SYNC-SETUP.md](SYNC-SETUP.md)**
 
 ```
 메뉴 → 가족 그룹 · 동기화 → 새 가족 그룹 만들기 → 코드 공유

@@ -1,0 +1,62 @@
+name: Deploy to GitHub Pages
+
+# 저장소에는 동기화 키를 커밋하지 않는다.
+# 배포할 때만 GitHub Secrets 에서 읽어 빌드 결과물에 주입한다.
+#   Settings → Secrets and variables → Actions 에 아래 두 개를 등록:
+#     FIREBASE_API_KEY
+#     FIREBASE_DB_URL
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 동기화 설정 주입 (시크릿 → 워크스페이스)
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_DB_URL:  ${{ secrets.FIREBASE_DB_URL }}
+        run: node src/inject-config.js
+
+      - name: 빌드
+        run: node src/build.js
+
+      - name: 배포 대상만 추리기
+        run: |
+          mkdir -p _site
+          cp index.html manifest.json sw.js _site/
+          cp *.png *.svg _site/ 2>/dev/null || true
+          # src/ 는 배포하지 않는다 — 주입된 키가 소스 파일에 남아 있기 때문
+          ls -la _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
