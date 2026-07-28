@@ -22,6 +22,7 @@ const MODULES = [
   'mod_badge.js',
   'mod_sound.js',
   'mod_sync.js',    // 가족 그룹 실시간 동기화
+  'mod_install.js', // 홈 화면에 추가
   'app_wire.js',    // 마지막: 모듈 등록과 부팅
 ];
 
