@@ -349,7 +349,7 @@ window.ModSync = {
     }
 
     /* 그룹 상태를 받되, "내가 누구인지"는 초대장이 정한다 */
-    if(g.state) this._applyRemote(g.state, {keepMe:false});
+    if(g.state) this._applyRemote(g.state, {keepMe:false, replace:true});
     const mine = App.state.members.find(m => m.id === inv.member);
     if(!mine) throw new Error('초대된 프로필이 그룹에서 사라졌어요');
 
@@ -452,7 +452,7 @@ window.ModSync = {
     this.stopPending();
     const r = await fetch(this._url('/groups/' + p.group));
     const g = r.ok ? await r.json() : null;
-    if(g && g.state) this._applyRemote(g.state, {keepMe:false});
+    if(g && g.state) this._applyRemote(g.state, {keepMe:false, replace:true});
     App.state.meId = p.member;
     App.state.sync.group = p.group;
     App.state.sync.on = true;
@@ -598,29 +598,104 @@ window.ModSync = {
       badges: s.badges || {},
       groupOpts: s.groupOpts || {approval:false},  // 그룹 정책 — 마스터가 정한다
       weekAnchor: s.weekAnchor || null,            // 이번 주의 기준선 — 기기마다 다르면 안 된다
-      hiddenNext: s.hiddenNext || {}               // 다음 주에서만 뺀 반복 일정
+      hiddenNext: s.hiddenNext || {},              // 다음 주에서만 뺀 반복 일정
+      tomb: s.tomb || {}                           // 지운 항목 — 병합 때 되살아나지 않도록
     };
   },
 
-  /* 그룹의 내용을 받아 덮되, "이 기기가 누구인지"는 절대 덮지 않는다.
+  /* ---------- 항목 단위 병합 ----------
+     통째로 덮어쓰면 내가 방금 만든 것이 남의 옛 사본에 지워진다.
+     그래서 일정과 할 일은 id 로 합치고, 같은 id 면 마지막에 손댄 쪽을 남긴다.
+     삭제는 묘비(tomb)로 따로 기억해야 되살아나지 않는다. */
+  _at(x){ return +((x && x.at) || 0); },
+
+  _mergeTodos(local, remote, tomb){
+    const m = new Map();
+    (remote||[]).forEach(r => { if(r && r.id) m.set(r.id, r); });
+    (local||[]).forEach(l => {
+      if(!l || !l.id) return;
+      const r = m.get(l.id);
+      if(!r || this._at(l) > this._at(r)) m.set(l.id, l);
+    });
+    const out = [];
+    m.forEach(v => { const t = tomb[v.id]; if(t && t >= this._at(v)) return; out.push(v); });
+    return out;
+  },
+
+  /* 일정은 요일 키 안에 들어 있고 드래그로 날짜가 바뀔 수 있다.
+     그래서 id 하나당 "가장 최근 자리" 하나만 남긴다 — 두 날에 동시에 뜨지 않도록. */
+  _mergeSchedOf(L, R, tomb){
+    const best = new Map();
+    const take = map => Object.keys(map||{}).forEach(k =>
+      (map[k]||[]).forEach(it => {
+        if(!it || !it.id) return;
+        const p = best.get(it.id);
+        if(!p || this._at(it) > this._at(p.item)) best.set(it.id, {key:k, item:it});
+      }));
+    take(R); take(L);                       // 같은 시각이면 원격을 남긴다
+    const out = {};
+    Object.keys(L||{}).forEach(k => { out[k] = []; });
+    Object.keys(R||{}).forEach(k => { out[k] = out[k] || []; });
+    best.forEach(({key, item}, id) => {
+      const t = tomb[id];
+      if(t && t >= this._at(item)) return;
+      (out[key] = out[key] || []).push(item);
+    });
+    return out;
+  },
+  _mergeSchedules(local, remote, tomb){
+    const out = {};
+    const ids = new Set([...Object.keys(local||{}), ...Object.keys(remote||{})]);
+    ids.forEach(mid => { out[mid] = this._mergeSchedOf((local||{})[mid], (remote||{})[mid], tomb); });
+    return out;
+  },
+
+  /* 올리기 직전에만 쓰는 가벼운 병합 — 화면 갱신도, 주 넘김도 건드리지 않는다 */
+  _mergeIn(st){
+    if(!st) return false;
+    const s = App.state;
+    const before = JSON.stringify([s.schedules, s.todos]);
+    const tomb = Object.assign({}, s.tomb || {});
+    Object.keys(st.tomb || {}).forEach(k => { if(!tomb[k] || st.tomb[k] > tomb[k]) tomb[k] = st.tomb[k]; });
+    s.tomb = tomb;
+    if(st.schedules) s.schedules = this._mergeSchedules(s.schedules, st.schedules, tomb);
+    if(st.todos)     s.todos     = this._mergeTodos(s.todos, st.todos, tomb);
+    if(st.doneEv)    s.doneEv    = Object.assign({}, st.doneEv, s.doneEv || {});
+    if(st.badges)    s.badges    = Object.assign({}, st.badges, s.badges || {});
+    if(st.hiddenNext)s.hiddenNext= Object.assign({}, st.hiddenNext, s.hiddenNext || {});
+    return before !== JSON.stringify([s.schedules, s.todos]);
+  },
+
+  /* 그룹의 내용을 받아 합치되, "이 기기가 누구인지"는 절대 덮지 않는다.
      meId 는 동기화 대상이 아니다 — 기기마다 다른 사람이기 때문. */
   _applyRemote(st, opt){
     if(!st) return;
     const keepMe = !opt || opt.keepMe !== false;
+    const replace = !!(opt && opt.replace);      // 참여 직후처럼 통째로 받아야 할 때
     this._pullingSelf = true;
     const s = App.state;
     const prevMe = s.meId;
 
+    /* 묘비는 양쪽을 합친다 — 어느 기기에서 지웠든 지워진 것이다 */
+    const tomb = Object.assign({}, s.tomb || {});
+    Object.keys(st.tomb || {}).forEach(k => {
+      if(!tomb[k] || st.tomb[k] > tomb[k]) tomb[k] = st.tomb[k];
+    });
+    const cut = Date.now() - 14*864e5;
+    Object.keys(tomb).forEach(k => { if(tomb[k] < cut) delete tomb[k]; });
+    s.tomb = tomb;
+
     if(st.members) s.members = st.members;
-    if(st.schedules) s.schedules = st.schedules;
-    if(st.todos) s.todos = st.todos;
+    if(st.schedules) s.schedules = replace ? st.schedules : this._mergeSchedules(s.schedules, st.schedules, tomb);
+    if(st.todos)     s.todos     = replace ? st.todos     : this._mergeTodos(s.todos, st.todos, tomb);
     if(st.reward) s.reward = st.reward;
     if(typeof st.coins === 'number') s.coins = st.coins;
-    if(st.doneEv) s.doneEv = st.doneEv;
-    if(st.badges) s.badges = st.badges;
+    /* 체크 표시는 켜고 끄는 값이라 합치기가 애매하다 — 내 기기의 최근 조작을 남긴다 */
+    if(st.doneEv) s.doneEv = replace ? st.doneEv : Object.assign({}, st.doneEv, s.doneEv || {});
+    if(st.badges) s.badges = replace ? st.badges : Object.assign({}, st.badges, s.badges || {});
     if(st.groupOpts) s.groupOpts = st.groupOpts;
     if(st.weekAnchor) s.weekAnchor = st.weekAnchor;
-    if(st.hiddenNext) s.hiddenNext = st.hiddenNext;
+    if(st.hiddenNext) s.hiddenNext = replace ? st.hiddenNext : Object.assign({}, st.hiddenNext, s.hiddenNext || {});
 
     if(keepMe){
       /* 우선 uid 로 나를 찾는다. 이름이 바뀌어도 흔들리지 않는다. */
@@ -630,8 +705,17 @@ window.ModSync = {
       /* 둘 다 아니면 migrate 가 첫 멤버로 떨어뜨린다 */
     }
     App.migrate();
+    /* 옛 기기가 올린 지난 주 상태를 그대로 받아들이지 않는다 */
+    let rolled = 0;
+    try{ rolled = App.rollWeeks() || 0; }catch(e){}
+    if(rolled) App.migrate();
     try{ localStorage.setItem('haruk', JSON.stringify(s)); }catch(e){}
     this._pullingSelf = false;
+    if(rolled){                       // 바로잡은 결과를 가족에게도 올린다
+      clearTimeout(this._pushTimer);
+      this._lastPushed = '';
+      setTimeout(() => this.push(), 60);
+    }
   },
 
   onLocalChange(){
@@ -640,10 +724,53 @@ window.ModSync = {
     this._pushTimer = setTimeout(() => this.push(), 700);   // 연타를 묶어서 한 번만 올린다
   },
 
+  /* 직전에 올린 것과 견줘 사라진 id 를 묘비에 남긴다.
+     모듈마다 삭제 코드를 고치지 않아도 모든 삭제가 잡힌다. */
+  _recordDeletions(prev, next){
+    if(!prev) return 0;
+    const ids = st => {
+      const set = new Set();
+      Object.keys(st.schedules||{}).forEach(m =>
+        Object.keys(st.schedules[m]||{}).forEach(k =>
+          (st.schedules[m][k]||[]).forEach(e => { if(e && e.id) set.add(e.id); })));
+      (st.todos||[]).forEach(t => { if(t && t.id) set.add(t.id); });
+      return set;
+    };
+    const before = ids(prev), after = ids(next);
+    const tomb = App.state.tomb = App.state.tomb || {};
+    const now = Date.now();
+    let n = 0;
+    before.forEach(id => { if(!after.has(id)){ tomb[id] = now; n++; } });
+    const cut = now - 14*864e5;
+    Object.keys(tomb).forEach(k => { if(tomb[k] < cut) delete tomb[k]; });
+    return n;
+  },
+
   async push(){
     if(!this.enabled()) return;
+    if(this._pushing){ this._pushAgain = true; return; }   // 겹쳐 부르면 한 번만
+    this._pushing = true;
     try{
       await this._auth();
+
+      /* ① 내가 지운 것을 먼저 묘비에 남긴다.
+            합치기보다 먼저 해야 서버에서 되살아나지 않는다. */
+      if(this._lastPushed){
+        try{ this._recordDeletions(JSON.parse(this._lastPushed), this._snapshot()); }catch(e){}
+      }
+
+      /* ② 서버 것을 읽어 합친다.
+            이걸 안 하면 나중에 올린 사람이 남의 방금 변경을 지워버린다. */
+      let grew = false;
+      try{
+        const r0 = await fetch(this._url('/groups/' + App.state.sync.group + '/state'));
+        if(r0.ok){
+          const rem = await r0.json();
+          if(rem) grew = this._mergeIn(rem);
+        }
+      }catch(e){ /* 못 읽으면 그냥 내 것을 올린다 */ }
+
+      /* ③ 합쳐진 결과를 올린다 */
       const snap = this._snapshot();
       const json = JSON.stringify(snap);
       if(json === this._lastPushed) return;
@@ -655,8 +782,15 @@ window.ModSync = {
       if(!r.ok) throw new Error(await this._errText(r));
       this._lastPushed = json;
       this._setStatus('live','');
+      if(grew){
+        try{ localStorage.setItem('haruk', JSON.stringify(App.state)); }catch(e){}
+        App.render();                       // 합쳐 들어온 가족의 변경을 화면에 반영
+      }
     }catch(e){
       this._setStatus('error', e.message || '올리지 못했어요');
+    }finally{
+      this._pushing = false;
+      if(this._pushAgain){ this._pushAgain = false; setTimeout(() => this.push(), 40); }
     }
   },
 
@@ -704,12 +838,24 @@ window.ModSync = {
     } else if(path === '/by'){ by = d.data; }
 
     if(by && by === this._uid) return;      // 내가 올린 것이 되돌아온 경우
-    if(st){
-      this._applyRemote(st);
-      this._lastPushed = JSON.stringify(this._snapshot());
-      App.render();
-      if(App.toast) App.toast('가족의 변경 내용을 받았어요');
-    }
+    if(st) this._acceptRemote(st);
+  },
+
+  /* 편집 중이면 미뤄뒀다가 시트가 닫힐 때 적용한다 */
+  _acceptRemote(st){
+    if(App._sheetOpen){ this._pendingRemote = st; this._setStatus('busy','받는 중'); return; }
+    /* 아직 안 올린 내 변경이 있으면 먼저 올리고 받는다 */
+    if(this._pushTimer){ clearTimeout(this._pushTimer); this._pushTimer = null; this.push(); }
+    this._applyRemote(st);
+    this._lastPushed = JSON.stringify(this._snapshot());
+    App.render();
+    if(App.toast) App.toast('가족의 변경 내용을 받았어요');
+  },
+  flushPending(){
+    const st = this._pendingRemote;
+    if(!st) return;
+    this._pendingRemote = null;
+    this._acceptRemote(st);
   },
 
   async _pullOnce(){

@@ -1430,8 +1430,8 @@ const App={
           if(on&&window.ModBadge)ModBadge.check('schedule');
           this.renderTime();
         };
-        b.querySelector('#dsA').onclick=e=>{ev.alarm=!ev.alarm;e.currentTarget.classList.toggle('on',ev.alarm);this.save();this.renderTime()};
-        b.querySelector('#dsR').onclick=e=>{ev.repeat=!ev.repeat;e.currentTarget.classList.toggle('on',ev.repeat);this.save();this.renderTime()};
+        b.querySelector('#dsA').onclick=e=>{ev.alarm=!ev.alarm;ev.at=Date.now();e.currentTarget.classList.toggle('on',ev.alarm);this.save();this.renderTime()};
+        b.querySelector('#dsR').onclick=e=>{ev.repeat=!ev.repeat;ev.at=Date.now();e.currentTarget.classList.toggle('on',ev.repeat);this.save();this.renderTime()};
         f.querySelector('#dsOk').onclick=()=>this.closeSheet();
         f.querySelector('#dsE').onclick=()=>{this.closeSheet();setTimeout(()=>this.editSchedule(id),260)};
       });
@@ -1478,7 +1478,7 @@ const App={
       b.addEventListener('click',e=>{
         e.stopPropagation();
         const ev=this.evs().find(x=>x.id===b.dataset.bell); if(!ev)return;
-        ev.alarm=!ev.alarm; this.save(); this.haptic(); this.renderTime();
+        ev.alarm=!ev.alarm; ev.at=Date.now(); this.save(); this.haptic(); this.renderTime();
         this.toast(ev.alarm?`🔔 ${esc(ev.t)} 알림을 켰어요`:`🔕 ${esc(ev.t)} 알림을 껐어요`);
       });
       b.addEventListener('mousedown',e=>e.stopPropagation());
@@ -1653,7 +1653,7 @@ const App={
       card.style.transform=''; card.style.height='';
       if(ok&&(cur.s!==orig.s||cur.e!==orig.e)){
         const clash=list.find(x=>x.id!==id&&toMin(x.s)<cur.e&&toMin(x.e)>cur.s);
-        ev.s=toStr(cur.s); ev.e=toStr(cur.e);
+        ev.s=toStr(cur.s); ev.e=toStr(cur.e); ev.at=Date.now();
         this.save(); this.haptic(); this.render();
         this.toast(clash?`${disp(cur.s)}로 옮겼어요 · ${clash.t}와 시간이 겹쳐요`:`${disp(cur.s)} ~ ${disp(cur.e)}로 바꿨어요`);
       }else{ this.renderTime(); }
@@ -1749,9 +1749,9 @@ const App={
         return this.toast(on?`✅ ${esc(ev.t)} 다녀왔어요`:'완료 표시를 지웠어요');}
       if(a==='detail')return this.detailSheet(id);
       if(a==='edit')return this.editSchedule(id);
-      if(a==='alarm'){ev.alarm=!ev.alarm;this.save();this.render();return this.toast(ev.alarm?'🔔 알림을 켰어요':'🔕 알림을 껐어요');}
-      if(a==='rep'){ev.repeat=!ev.repeat;this.save();this.render();return this.toast(ev.repeat?`🔁 매주 ${DAYS[this.day][0]}요일에 반복돼요`:'반복을 껐어요');}
-      if(a==='secret'){ev.secret=!ev.secret;ev.owner=this.meId();this.save();this.render();return this.toast(ev.secret?'🤫 나만 보는 일정이 됐어요':'👀 가족이 볼 수 있어요');}
+      if(a==='alarm'){ev.alarm=!ev.alarm;ev.at=Date.now();this.save();this.render();return this.toast(ev.alarm?'🔔 알림을 켰어요':'🔕 알림을 껐어요');}
+      if(a==='rep'){ev.repeat=!ev.repeat;ev.at=Date.now();this.save();this.render();return this.toast(ev.repeat?`🔁 매주 ${DAYS[this.day][0]}요일에 반복돼요`:'반복을 껐어요');}
+      if(a==='secret'){ev.secret=!ev.secret;ev.owner=this.meId();ev.at=Date.now();this.save();this.render();return this.toast(ev.secret?'🤫 나만 보는 일정이 됐어요':'👀 가족이 볼 수 있어요');}
       if(a==='del'){
         /* 다음 주에서 반복 일정을 지우면 그 주에서만 뺀다 — 원본은 이번 주에 남는다 */
         if(this.isBorrowed(id,this.day)){
@@ -1778,7 +1778,7 @@ const App={
         f.querySelector('#dpOk').onclick=()=>{
           const ds=[...b.querySelectorAll('.daychip.on')].map(x=>+x.dataset.d);
           if(!ds.length)return this.toast('요일을 골라주세요');
-          ds.forEach(d=>{ this.bucket(d).push(Object.assign({},ev,{id:uid(),repeat:false})); });
+          ds.forEach(d=>{ this.bucket(d).push(Object.assign({},ev,{id:uid(),repeat:false,at:Date.now()})); });
           this.save();this.closeSheet();this.render();this.toast(`${ds.length}개 요일에 복제했어요 ✨`);
         };
       });
@@ -1844,6 +1844,16 @@ const App={
   },
 
   tick(){
+    /* 자정을 넘겨도 앱을 계속 켜두는 경우가 있다 — 1분마다 주가 바뀌었는지 본다 */
+    const t=Date.now();
+    if(!this._rollChk||t-this._rollChk>60000){
+      this._rollChk=t;
+      const cur=this.isoDay(this.mondayOf(new Date()));
+      if(this.state.weekAnchor!==cur&&this.rollWeeks()){
+        this.migrate(); this.save(); this.week=0; this.render();
+        this.toast('새로운 한 주가 시작됐어요 🌱');
+      }
+    }
     if(this.tab!=='time')return;
     if(this.view==='week'){
       const g=document.querySelector('.wk-now');
@@ -1909,6 +1919,9 @@ const App={
 
   /* ---------- SHEET ---------- */
   sheet(title,bodyHTML,footHTML,onMount){
+    /* 시트가 열려 있는 동안 가족의 변경을 밀어넣으면, 편집 중이던 대상이
+       통째로 갈리면서 방금 쓴 내용이 사라진다. 닫힐 때까지 미룬다. */
+    this._sheetOpen=true;
     document.getElementById('shTitle').textContent=title;
     document.getElementById('shBody').innerHTML=bodyHTML;
     document.getElementById('shFoot').innerHTML=footHTML||'';
@@ -1917,9 +1930,11 @@ const App={
     if(onMount)onMount(document.getElementById('shBody'),document.getElementById('shFoot'));
   },
   closeSheet(){
+    this._sheetOpen=false;
     document.getElementById('sheet').classList.remove('on');
     document.getElementById('drawer').classList.remove('on');
     document.getElementById('scrim').classList.remove('on');
+    if(window.ModSync&&ModSync.flushPending)setTimeout(()=>ModSync.flushPending(),120);
   }
 };
 </script>

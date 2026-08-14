@@ -101,11 +101,11 @@ App.editSchedule=function(id,presetStart){
         secret:b.querySelector('#fSec').classList.contains('on'),
         memo:b.querySelector('#fM').value.trim(),
         items:b.querySelector('#fI').value.split(',').map(x=>x.trim()).filter(Boolean),
-        owner:this.meId()};
+        owner:this.meId(), at:Date.now()};
       if(id){Object.assign(ev,base);}
       else{
         (days.length?days:[this.day]).forEach(dy=>{
-          this.bucket(dy).push(Object.assign({id:uid()},base));
+          this.bucket(dy).push(Object.assign({id:uid()},base,{at:Date.now()}));
         });
       }
       this.save();this.closeSheet();this.openCard=null;this.render();

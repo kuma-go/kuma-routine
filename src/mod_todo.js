@@ -157,9 +157,12 @@ window.ModTodo = {
     .td-coin-chip{ border:1.6px solid var(--line); background:var(--paper); cursor:pointer; font-weight:800; }
     .td-coin-chip.on{ border-color:var(--indigo); background:var(--indigo-s); color:var(--indigo-d); }
     .td-coin-note{ font-size:12px; color:var(--muted); font-weight:700; }
-    .td-day-chips{ display:flex; flex-wrap:wrap; gap:8px; }
-    .td-daysel-chip{ border:1.6px solid var(--line); background:var(--paper); cursor:pointer; font-weight:800; min-width:40px; text-align:center; }
-    .td-daysel-chip.on{ border-color:var(--indigo); background:var(--indigo); color:#fff; }
+    /* 요일 다중 선택 — 칩 모양은 일정 시트의 .daychip 을 그대로 쓴다 */
+    .td-daycnt{ color:var(--indigo); font-weight:800; }
+    .td-daycnt--none{ color:var(--muted); }
+    #phone.th-dark .td-daycnt{ color:#B7AEFF; }
+    #phone.th-dark .td-daycnt--none{ color:var(--muted); }
+    .td-dayhint{ margin:8px 2px 0; font-size:11.5px; font-weight:700; color:var(--muted); }
 
     /* ---- 완료 축하 오버레이 ---- */
     .td-cele{
@@ -288,13 +291,15 @@ window.ModTodo = {
         <input class="inp" id="td-ed-text" placeholder="예) 방 청소하기" value="${this._esc(text)}" maxlength="40" />
       </div>
       ${coinFieldHtml}
+      ${editing ? '' : `
       <div class="field">
-        <label>${week ? '다음 주 요일 선택' : '요일 선택'}</label>
+        <label>${week ? '다음 주 요일 선택' : '요일 선택'} <span class="td-daycnt" id="td-ed-dayscnt">· 1일 선택됨</span></label>
         ${week ? '<div class="td-weekhint">다음 주에 할 일이 생겨요</div>' : ''}
-        <div class="td-day-chips" id="td-ed-days">
-          ${DAYS.map((d, i) => `<button type="button" class="pill td-daysel-chip ${i === day ? 'on' : ''}" data-dsel="${i}">${d[0]}</button>`).join('')}
+        <div class="swatches" id="td-ed-days">
+          ${DAYS.map((d, i) => `<button type="button" class="daychip ${i === day ? 'on' : ''}" data-dsel="${i}" aria-pressed="${i === day}">${d[0]}</button>`).join('')}
         </div>
-      </div>
+        <p class="td-dayhint">여러 요일을 골라 한 번에 만들 수 있어요</p>
+      </div>`}
       <div class="toggle-row">
         <div>
           <div class="tl">비밀 할 일</div>
@@ -314,7 +319,8 @@ window.ModTodo = {
       : (week ? '다음 주 할 일 등록' : '할 일 등록');
 
     App.sheet(sheetTitle, body, foot, (bodyEl, footEl) => {
-      let selDay = day;
+      /* 새로 만들 때만 요일을 여러 개 고를 수 있다 (수정할 때는 그 할 일의 요일 그대로) */
+      let selDays = [day];
       let selCoin = coin;
       let selSecret = secret;
 
@@ -328,13 +334,25 @@ window.ModTodo = {
         });
       }
 
-      bodyEl.querySelectorAll('[data-dsel]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          selDay = Number(btn.dataset.dsel);
-          bodyEl.querySelectorAll('[data-dsel]').forEach(b => b.classList.remove('on'));
-          btn.classList.add('on');
+      if(!editing){
+        const cntEl = bodyEl.querySelector('#td-ed-dayscnt');
+        const syncDays = () => {
+          selDays = [...bodyEl.querySelectorAll('#td-ed-days .daychip.on')].map(b => Number(b.dataset.dsel));
+          if(cntEl){
+            cntEl.textContent = selDays.length ? `· ${selDays.length}일 선택됨` : '· 선택된 요일 없음';
+            cntEl.classList.toggle('td-daycnt--none', selDays.length === 0);
+          }
+        };
+        bodyEl.querySelectorAll('#td-ed-days .daychip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            btn.classList.toggle('on');
+            btn.setAttribute('aria-pressed', btn.classList.contains('on'));
+            window.ModSound && ModSound.play('tap');
+            syncDays();
+          });
         });
-      });
+        syncDays();
+      }
 
       const secretBtn = bodyEl.querySelector('#td-ed-secret');
       secretBtn.addEventListener('click', () => {
@@ -360,27 +378,37 @@ window.ModTodo = {
           inputEl.focus();
           return;
         }
+        let addedDays = 0;
         if(editing){
           editing.text = val;
-          editing.day = selDay;
           editing.secret = selSecret;
           if(canSetCoin) editing.coin = selCoin;
+          editing.at = Date.now();   // 항목 단위 병합용 — 마지막으로 손댄 시각
         } else {
-          App.state.todos.push({
-            id: uid(),
-            day: selDay,
-            w: week,                 // 0 = 이번 주, 1 = 다음 주
-            for: App.vm(),
-            text: val,
-            coin: canSetCoin ? selCoin : 0,
-            done: false,
-            secret: selSecret,
-            owner: App.meId()
+          /* 고른 요일마다 하나씩 — 주(w)는 지금 보고 있는 주 하나 */
+          const days = selDays.length ? selDays : [day];
+          addedDays = days.length;
+          days.forEach(dy => {
+            App.state.todos.push({
+              id: uid(),
+              day: dy,
+              w: week,                 // 0 = 이번 주, 1 = 다음 주
+              for: App.vm(),
+              text: val,
+              coin: canSetCoin ? selCoin : 0,
+              done: false,
+              secret: selSecret,
+              owner: App.meId(),
+              at: Date.now()
+            });
           });
         }
         App.save();
         App.render();
         App.closeSheet();
+        App.toast(editing
+          ? '할 일을 수정했어요'
+          : `${week ? '다음 주 ' : ''}할 일을 ${addedDays > 1 ? addedDays + '일에 ' : ''}추가했어요 ✨`);
       });
     });
   },
@@ -562,7 +590,8 @@ window.ModTodo = {
             coin: App.canSetCoin() ? 10 : 0,
             done: false,
             secret: false,
-            owner: App.meId()
+            owner: App.meId(),
+            at: Date.now()
           });
           App.save();
           App.toast(App.week ? '다음 주 할 일을 냈어요!' : '할 일을 냈어요!');
@@ -577,6 +606,7 @@ window.ModTodo = {
     if(!t || !App.canSee(t)) return;
     const willBeDone = !t.done;
     t.done = willBeDone;
+    t.at = Date.now();   // 항목 단위 병합용 — 완료 토글도 '손댄' 것
     if(willBeDone){
       App.state.coins = (App.state.coins || 0) + (t.coin || 0);
     } else {
@@ -842,6 +872,7 @@ window.ModTodo = {
     bar.querySelector('.td-undo-btn').addEventListener('click', () => {
       clearTimeout(this._undoTimer);
       const idx = Math.min(originalIndex, App.state.todos.length);
+      item.at = Date.now();   // 되살린 것도 방금 손댄 것으로 본다
       App.state.todos.splice(idx, 0, item);
       App.save();
       this._hideUndo();
