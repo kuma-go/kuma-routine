@@ -32,6 +32,8 @@ window.ModWatch = {
     .wt-top{ font-size:13px; font-weight:800; color:#8E8EA8; letter-spacing:.02em; }
     .wt-name{ color:#B7AEFF; }
     .wt-now{ font-size:12px; font-weight:700; color:#6E6E86; margin-top:2px; }
+    .wt-fresh{ font-size:10.5px; font-weight:700; color:#4E4E60; margin-top:3px; letter-spacing:.02em; }
+    .wt-fresh.err{ color:#FF9A4D; }
 
     .wt-card{
       margin:13px 0; padding:15px 14px; border-radius:20px; background:#16161E;
@@ -94,8 +96,17 @@ window.ModWatch = {
     clearInterval(this._t);
     this._t = setInterval(() => this.render(), 60000);
     this.pull();
+    /* 셀룰러 단독일 때 배터리가 중요하다 — 화면이 켜져 있을 때만 받아온다.
+       워치는 손목을 내리면 곧바로 hidden 이 되므로 이걸로 충분하다. */
+    this._schedulePull();
+    document.addEventListener('visibilitychange', () => {
+      if(document.hidden){ clearInterval(this._p); this._p = null; }
+      else { this.pull(); this._schedulePull(); this.render(); }
+    });
+  },
+  _schedulePull(){
     clearInterval(this._p);
-    this._p = setInterval(() => this.pull(), 180000);   // 3분마다 조용히 갱신
+    this._p = setInterval(() => { if(!document.hidden) this.pull(); }, 120000);
   },
 
   /* 읽기만 한다 — 워치에서 올리는 일은 없다 */
@@ -120,9 +131,23 @@ window.ModWatch = {
       const byUid = (s.members||[]).find(m => m.uid && m.uid === S._uid);
       if(byUid) s.meId = byUid.id;
       App.rollWeeks(); App.migrate();
-      try{ localStorage.setItem('haruk', JSON.stringify(s)); }catch(e){}
+      this._seen = Date.now(); this._netErr = false;
+      try{ localStorage.setItem('haruk', JSON.stringify(s)); localStorage.setItem('kuma.watch.seen', String(this._seen)); }catch(e){}
       this.render();
-    }catch(e){ /* 못 받아도 마지막으로 본 내용을 그대로 보여준다 */ }
+    }catch(e){
+      /* 못 받아도 마지막으로 본 내용을 그대로 보여준다 — 언제 기준인지만 알린다 */
+      this._netErr = true; this.render();
+    }
+  },
+
+  /* 마지막으로 받아온 시점 — 손목에서 "이거 최신인가?" 를 알 수 있게 */
+  _fresh(){
+    let at = this._seen;
+    if(!at){ try{ at = +localStorage.getItem('kuma.watch.seen') || 0; }catch(e){ at = 0; } }
+    if(!at) return this._netErr ? '연결 안 됨' : '';
+    const m = Math.floor((Date.now() - at) / 60000);
+    const ago = m < 1 ? '방금' : (m < 60 ? m + '분 전' : Math.floor(m/60) + '시간 전');
+    return this._netErr ? ('연결 안 됨 · ' + ago) : ago;
   },
 
   _hhmm(t){ return String(t||'').replace(/^0/,''); },
@@ -172,6 +197,7 @@ window.ModWatch = {
     el.innerHTML = `
       <div class="wt-top">${esc(me.emoji||'')} <span class="wt-name">${esc(me.name||'')}</span></div>
       <div class="wt-now">${['일','월','화','수','목','금','토'][App.day]}요일 · ${esc(this._hhmm(typeof toStr==='function'?toStr(now):''))}</div>
+      ${this._fresh()?`<div class="wt-fresh ${this._netErr?'err':''}">${esc(this._fresh())}</div>`:''}
 
       <div class="wt-card ${heroNow?'now':'next'}">
         <span class="wt-badge">${heroNow?'지금':'다음'}</span>
@@ -205,10 +231,18 @@ window.ModWatch = {
       </div>
       <div class="sy-code" style="font-size:12px;letter-spacing:0;height:auto;padding:13px 10px;margin-top:14px;word-break:break-all">${esc(u)}</div>
       <button class="btn full" id="wtCopy">주소 복사하기</button>
+      <div class="panel" style="padding:13px 15px;margin-top:14px">
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:6px">셀룰러 단독으로 쓸 때</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink2);line-height:1.7">
+          <b style="color:#1E7A50">○ 이 화면은 됩니다</b> — 워치가 직접 인터넷에 붙어 받아옵니다. 폰이 꺼져 있어도 열려요.<br>
+          <b style="color:#C43F00">× 알림은 안 됩니다</b> — 폰 알림을 손목에 비추는 방식이라 폰이 곁에 있어야 합니다.
+        </div>
+      </div>
       <p class="sy-note">
         워치는 <b>보기 전용</b>이에요. 손목에서 고치거나 지울 수 없고,
         가족의 자리를 차지하지도 않습니다.<br>
-        타자가 번거로우면 <b>기기 알림</b>을 켜 두세요 — 곧 시작하는 일정이 손목에 저절로 뜹니다.
+        화면 위에 <b>언제 기준인지</b>가 작게 뜨니, 신호가 없을 땐 그걸 보고 판단하세요.<br>
+        주소·코드 입력이 번거로우면 워치 브라우저의 <b>음성 입력</b>을 쓰면 빠릅니다.
       </p>`,
       `<button class="btn line full" id="wtC">닫기</button>`, (b,f) => {
       f.querySelector('#wtC').onclick = () => App.closeSheet();
