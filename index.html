@@ -10889,7 +10889,9 @@ window.ModWatch = {
   },
 
   /* 폰에서 여는 안내 — 워치에 어떻게 띄우는지 */
-  watchUrl(){ return App.appUrl() + '?watch=1'; },
+  /* 워치에서 손으로 치기 쉬운 짧은 주소 — 물음표도 등호도 없다 */
+  watchUrl(){ return App.appUrl().replace(/\/$/,'') + '/w'; },
+  watchUrlLong(){ return App.appUrl() + '?watch=1'; },
   openInfo(){
     const u = this.watchUrl();
     App.sheet('갤럭시 워치에서 보기', `
@@ -10902,7 +10904,8 @@ window.ModWatch = {
           <span class="in-step-tx">워치에 <b>Samsung Internet</b> 을 설치하세요<br>
             <small style="color:var(--muted)">갤럭시 스토어 · 워치용 브라우저</small></span></div>
         <div class="in-step"><span class="in-num">2</span>
-          <span class="in-step-tx">아래 주소를 워치 브라우저에 넣고 <b>즐겨찾기</b> 하세요</span></div>
+          <span class="in-step-tx">아래 주소를 워치 브라우저에 넣고 <b>즐겨찾기</b> 하세요<br>
+            <small style="color:var(--muted)">음성 입력을 쓰면 빠릅니다</small></span></div>
         <div class="in-step"><span class="in-num">3</span>
           <span class="in-step-tx">처음 한 번 <b>초대 코드</b>를 넣으면 끝이에요</span></div>
       </div>

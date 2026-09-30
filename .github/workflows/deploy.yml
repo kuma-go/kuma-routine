@@ -47,6 +47,7 @@ jobs:
           mkdir -p _site
           cp index.html manifest.json sw.js _site/
           cp *.png *.svg _site/ 2>/dev/null || true
+          cp -r w _site/ 2>/dev/null || true      # 워치용 짧은 주소
           # src/ 는 배포하지 않는다 — 주입된 키가 소스 파일에 남아 있기 때문
           ls -la _site
 
