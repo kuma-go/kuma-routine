@@ -74,6 +74,20 @@ window.ModNotify = {
     .nt-quiet-times{ margin-top:2px; }
 
     /* ---- 인앱 배너 (상단 슬라이드 다운) ---- */
+    .nt-sysrow{ display:flex; align-items:center; gap:12px; padding:13px 15px;
+      border-radius:var(--r-m); border:1.6px solid var(--line); cursor:pointer; }
+    .nt-systx{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .nt-systx b{ font-size:13.5px; font-weight:800; color:var(--ink); }
+    .nt-systx small{ font-size:11.5px; font-weight:700; color:var(--muted); line-height:1.5; }
+    .nt-sw{ margin-left:auto; flex:0 0 auto; width:46px; height:27px; border-radius:14px;
+      background:#DCDCE6; position:relative; transition:.2s cubic-bezier(.22,1,.36,1); }
+    .nt-sw i{ position:absolute; top:3px; left:3px; width:21px; height:21px; border-radius:50%;
+      background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:.2s cubic-bezier(.22,1,.36,1); }
+    .nt-sw.on{ background:var(--indigo); } .nt-sw.on i{ transform:translateX(19px); }
+    .nt-sysnote{ margin:9px 2px 0; font-size:11.5px; font-weight:700; color:var(--orange); line-height:1.55; }
+    #phone.th-dark .nt-sysrow{ border-color:#33333F; }
+    #phone.th-dark .nt-sw{ background:#3A3A48; } #phone.th-dark .nt-sw.on{ background:#7A6EEA; }
+
     .nt-banner{
       position:absolute; top:0; left:10px; right:10px; z-index:180;
       display:flex; align-items:flex-start; gap:10px;
@@ -154,7 +168,63 @@ window.ModNotify = {
       this._log(payload); // 방해 금지 시간엔 배너 없이 기록만
     } else {
       this.push(payload);
+      this.system(payload);     // 갤럭시 워치 등 페어링된 기기로 미러링된다
     }
+  },
+
+  /* ================= 시스템 알림 =================
+     앱 안 배너는 앱을 보고 있을 때만 보인다.
+     진짜 시스템 알림으로 띄우면 폰 잠금화면과 페어링된 워치에 함께 뜬다. */
+  canSystem(){ return typeof Notification !== 'undefined'; },
+  sysState(){
+    if(!this.canSystem()) return 'unsupported';
+    if(!App.state.notify || !App.state.notify.system) return 'off';
+    return Notification.permission;     // granted | denied | default
+  },
+  async askSystem(){
+    if(!this.canSystem()){ App.toast('이 브라우저는 시스템 알림을 지원하지 않아요'); return false; }
+    let perm = Notification.permission;
+    if(perm === 'default'){
+      try{ perm = await Notification.requestPermission(); }catch(e){ perm = 'denied'; }
+    }
+    if(perm !== 'granted'){
+      App.toast('브라우저 설정에서 알림을 허용해 주세요');
+      return false;
+    }
+    App.state.notify.system = true; App.save();
+    this.system({emoji:'⌚', title:'알림을 켰어요',
+      body:'이제 곧 시작하는 일정이 손목에도 떠요', tone:'good'});
+    return true;
+  },
+  system(payload){
+    if(this.sysState() !== 'granted') return;
+    const title = String(payload.title || 'KUMA routine');
+    const opts = {
+      body: String(payload.body || ''),
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: 'kuma-' + (payload.tag || title),   // 같은 알림이 쌓이지 않게
+      lang: 'ko-KR',
+      renotify: false
+    };
+    const direct = () => { try{ new Notification(title, opts); }catch(e){} };
+    try{
+      /* 안드로이드 설치본에서는 서비스워커로 띄워야 제대로 뜬다.
+         다만 워커가 등록되지 않은 페이지에서는 ready 가 영영 풀리지 않으므로
+         짧게 기다렸다가 직접 띄우는 쪽으로 넘어간다. */
+      const sw = navigator.serviceWorker;
+      if(sw && sw.controller && sw.ready){
+        let done = false;
+        const fallback = setTimeout(() => { if(!done){ done = true; direct(); } }, 400);
+        sw.ready.then(reg => {
+          if(done) return;
+          done = true; clearTimeout(fallback);
+          return reg.showNotification(title, opts);
+        }).catch(() => { if(!done){ done = true; clearTimeout(fallback); direct(); } });
+      }else{
+        direct();
+      }
+    }catch(e){ /* 알림이 막혀 있어도 앱은 계속 돈다 */ }
   },
 
   _inQuiet(min){
@@ -349,6 +419,18 @@ window.ModNotify = {
 
     const body = `
       <div class="field">
+        <label>손목·잠금화면 알림</label>
+        <div class="nt-sysrow" id="ntSysRow">
+          <span class="nt-systx">
+            <b>기기 알림으로 받기</b>
+            <small>갤럭시 워치를 차고 있으면 손목에도 함께 떠요</small>
+          </span>
+          <span class="nt-sw ${this.sysState()==='granted'?'on':''}"><i></i></span>
+        </div>
+        ${this.sysState()==='denied'?`<p class="nt-sysnote">브라우저에서 알림이 차단돼 있어요 · 주소창 옆 자물쇠에서 허용해 주세요</p>`:''}
+        ${!this.canSystem()?`<p class="nt-sysnote">이 브라우저는 기기 알림을 지원하지 않아요</p>`:''}
+      </div>
+      <div class="field">
         <label>일정 시작 몇 분 전에 알릴까요?</label>
         <div class="nt-lead-row" id="ntLeadRow">
           ${leads.map(v => `<button type="button" class="nt-lead-chip ${cfg.lead === v ? 'on' : ''}" data-lead="${v}">${v}분 전</button>`).join('')}
@@ -385,6 +467,19 @@ window.ModNotify = {
     const foot = `<button type="button" class="btn line full" id="ntPreview">🔔 미리 보기</button>`;
 
     App.sheet('알림 설정', body, foot, (b, f) => {
+      const sysRow = b.querySelector('#ntSysRow');
+      if(sysRow) sysRow.addEventListener('click', async () => {
+        const sw = sysRow.querySelector('.nt-sw');
+        if(sw.classList.contains('on')){
+          App.state.notify.system = false; App.save();
+          sw.classList.remove('on');
+          App.toast('기기 알림을 껐어요 · 앱 안에서는 계속 알려드려요');
+          return;
+        }
+        const okk = await this.askSystem();
+        sw.classList.toggle('on', !!okk);
+      });
+
       b.querySelectorAll('#ntLeadRow .nt-lead-chip').forEach(btn => {
         btn.addEventListener('click', () => {
           cfg.lead = +btn.dataset.lead;

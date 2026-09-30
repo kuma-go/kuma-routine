@@ -311,6 +311,7 @@ App.renderDrawer=function(){
       ${window.ModSound?`<button class="dr-item" data-act="sound"><span class="em">🔊</span>소리 설정</button>`:''}
       ${window.ModTheme&&this.state.adFree?`<button class="dr-item" data-act="ads"><span class="em">📺</span>광고 다시 보기</button>`:''}
       <div class="hr"></div>
+      <button class="dr-item" data-act="watch"><span class="em">⌚</span>갤럭시 워치에서 보기</button>
       ${(window.ModInstall&&ModInstall.available&&ModInstall.available())?`<button class="dr-item" data-act="install"><span class="em">📲</span>홈 화면에 추가${ModInstall.canInstall()?'<span class="pill" style="background:var(--indigo-s);color:var(--indigo);margin-left:auto">한 번에</span>':''}</button>`:''}
       ${this.canSwitchDevice()?`<button class="dr-item" data-act="owner"><span class="em">🔄</span>이 기기 주인 바꾸기<span class="pill" style="background:var(--bg);color:var(--muted);margin-left:auto">${esc(me.emoji)} ${esc(me.name)}</span></button>`:''}
       <button class="dr-item" data-act="sim"><span class="em">⏱</span>시간 미리보기 ${this.simNow!==null?'<span class="pill" style="background:var(--orange-s);color:var(--orange);margin-left:auto">'+disp(this.simNow)+'</span>':''}</button>
@@ -325,6 +326,7 @@ App.renderDrawer=function(){
   document.querySelectorAll('#drawer .dr-item').forEach(b=>b.onclick=()=>{
     if(b.dataset.go){this.closeSheet();this.go(b.dataset.go);return;}
     const a=b.dataset.act;
+    if(a==='watch'){this.closeSheet(); setTimeout(()=>window.ModWatch&&ModWatch.openInfo(),220);}
     if(a==='install'){this.closeSheet(); setTimeout(()=>window.ModInstall&&ModInstall.start(),220);}
     if(a==='owner'){this.closeSheet(); setTimeout(()=>this.openDeviceOwner(),200);}
     if(a==='sim'){this.closeSheet();this.openSim();}
@@ -567,6 +569,12 @@ App.openSim=function(){
     window.addEventListener('load',()=>{
       navigator.serviceWorker.register('./sw.js').catch(()=>{});
     });
+  }
+
+  /* 워치 모드면 폰 화면을 그리지 않는다 — ModWatch 가 따로 그린다 */
+  if(window.ModWatch&&ModWatch.active&&ModWatch.active()){
+    setInterval(()=>App.tick(),1000);
+    return;
   }
 
   App.render();
