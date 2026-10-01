@@ -77,8 +77,14 @@ window.ModWatch = {
     .wt-row:first-child{ border-top:0; }
     .wt-row b{ font-size:14px; font-weight:800; color:#6E6E86; flex:0 0 52px; font-variant-numeric:tabular-nums; }
     .wt-row span{ font-size:15px; font-weight:700; flex:1; min-width:0; word-break:keep-all; color:#22222E; }
+    /* 흐리게 하는 건 "다녀옴" 체크한 것뿐이다 */
     .wt-row.done b, .wt-row.done span{ color:#B0B0C2; text-decoration:line-through; }
+    /* 지났는데 아직 체크 안 한 일정 — 또렷하게 두고 시간만 표시를 바꾼다 */
+    .wt-row.over b{ color:#C43F00; }
     .wt-row .wt-dot{ flex:0 0 auto; font-size:11px; color:#FF6A00; }
+    .wt-row .wt-ck{ flex:0 0 auto; font-size:12px; font-style:normal; color:#1E7A50; font-weight:800; }
+    /* 큰 카드가 목록 사이에 끼므로 위아래 간격을 맞춘다 */
+    .wt-rest + .wt-card, .wt-card + .wt-rest{ margin-top:10px; }
 
     .wt-empty{ margin-top:20%; font-size:15px; font-weight:700; color:#8E8EA8; line-height:1.7; }
     .wt-foot{ margin-top:16px; font-size:11px; font-weight:700; color:#A8A8BC; line-height:1.7; }
@@ -190,6 +196,12 @@ window.ModWatch = {
     this.render();
   },
 
+  /* 보고 있는 사람 기준의 "다녀옴" 체크 (App.doneKey 는 내 시점이라 쓰지 않는다) */
+  _isDone(id, vmId){
+    const k = (vmId||this.vm()) + '|' + App.day + '|' + id;
+    return !!(App.state.doneEv||{})[k];
+  },
+
   _hhmm(t){ return String(t||'').replace(/^0/,''); },
   _min(t){ const [h,m] = String(t||'0:0').split(':').map(Number); return (h||0)*60 + (m||0); },
 
@@ -224,38 +236,49 @@ window.ModWatch = {
       return;
     }
 
-    /* 지금 진행 중인 것이 있으면 그것을, 없으면 다음 것을 크게 */
+    /* 카드는 언제나 시간 순서대로 둔다.
+       지금(또는 다음) 일정만 그 자리에서 크게 보일 뿐, 순서를 바꾸지 않는다. */
     const cur  = list.find(e => this._min(e.s) <= now && now < this._min(e.e));
-    const next = cur || list.find(e => this._min(e.s) > now);
-    const hero = next || list[list.length - 1];
-    const heroNow = !!cur;
+    const hero = cur || list.find(e => this._min(e.s) > now) || null;
 
-    const items = (hero.items||[]).map(x =>
-      `<span class="wt-item ${App.isPacked&&App.isPacked(hero.id,x)?'ok':''}">${esc(x)}</span>`).join('');
-
-    const rest = list.filter(e => e !== hero).map(e => {
-      const past = this._min(e.e) <= now;
-      return `<div class="wt-row ${past?'done':''}">
+    /* 흐리게 하는 기준은 "시간이 지났는가" 가 아니라 "다녀왔다고 체크했는가" 다.
+       체크하지 않은 일정은 지났더라도 또렷하게 보여야 미리 챙길 수 있다. */
+    const rows = list.map(e => {
+      const done = this._isDone(e.id, vmId);
+      const over = !done && this._min(e.e) <= now;      // 지났는데 아직 체크 안 함
+      if(e === hero){
+        const items = (e.items||[]).map(x =>
+          `<span class="wt-item ${App.isPacked&&App.isPacked(e.id,x)?'ok':''}">${esc(x)}</span>`).join('');
+        return `<div class="wt-card ${cur?'now':'next'}">
+          <span class="wt-badge">${cur?'지금':'다음'}</span>
+          <div class="wt-time">${esc(this._hhmm(e.s))}</div>
+          <div class="wt-title">${esc(e.t)}</div>
+          ${e.memo?`<div class="wt-memo">${esc(e.memo)}</div>`:''}
+          ${items?`<div class="wt-prep-t">준비물</div><div class="wt-items">${items}</div>`:''}
+        </div>`;
+      }
+      return `<div class="wt-row ${done?'done':''} ${over?'over':''}">
         <b>${esc(this._hhmm(e.s))}</b>
         <span>${esc(e.t)}</span>
-        ${(e.items&&e.items.length)?`<i class="wt-dot">🎒</i>`:''}
+        ${done?'<i class="wt-ck">✓</i>':((e.items&&e.items.length)?`<i class="wt-dot">🎒</i>`:'')}
       </div>`;
-    }).join('');
+    });
+
+    /* 큰 카드를 기준으로 앞뒤를 묶어 준다 — 순서는 그대로 유지된다 */
+    const hi = hero ? list.indexOf(hero) : -1;
+    const wrap = (arr, from, to) => {
+      const part = arr.slice(from, to).join('');
+      return part ? `<div class="wt-rest">${part}</div>` : '';
+    };
+    const body = hi < 0
+      ? wrap(rows, 0, rows.length)
+      : wrap(rows, 0, hi) + rows[hi] + wrap(rows, hi+1, rows.length);
 
     el.innerHTML = `
       <button class="wt-top ${multi?'tap':''}" id="wtWho">${multi?'<span class="wt-arw">‹</span>':''}${esc(me.emoji||'')} <span class="wt-name">${esc(me.name||'')}</span>${multi?'<span class="wt-arw">›</span>':''}</button>
       <div class="wt-now">${['일','월','화','수','목','금','토'][App.day]}요일 · ${esc(this._hhmm(typeof toStr==='function'?toStr(now):''))}</div>
       ${this._fresh()?`<div class="wt-fresh ${this._netErr?'err':''}">${esc(this._fresh())}</div>`:''}
-
-      <div class="wt-card ${heroNow?'now':'next'}">
-        <span class="wt-badge">${heroNow?'지금':'다음'}</span>
-        <div class="wt-time">${esc(this._hhmm(hero.s))}</div>
-        <div class="wt-title">${esc(hero.t)}</div>
-        ${hero.memo?`<div class="wt-memo">${esc(hero.memo)}</div>`:''}
-        ${items?`<div class="wt-prep-t">준비물</div><div class="wt-items">${items}</div>`:''}
-      </div>
-
-      ${rest?`<div class="wt-rest">${rest}</div>`:''}
+      ${body}
       <div class="wt-foot">${multi?'이름을 눌러 가족을 바꿔요<br>':''}폰에서 고칠 수 있어요 · 손목에서는 보기만 합니다</div>`;
     this._bindWho(el);
   },
