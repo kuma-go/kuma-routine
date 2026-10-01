@@ -42,31 +42,49 @@ window.ModWatch = {
     .wt-fresh{ font-size:10.5px; font-weight:700; color:#A8A8BC; margin-top:2px; letter-spacing:.02em; }
     .wt-fresh.err{ color:#C43F00; }
 
+    /* 카드는 폰과 같은 색을 쓴다 — 일정마다 자기 색이 있다 */
     .wt-card{
-      margin:12px 0; padding:15px 14px; border-radius:20px; background:#FFF;
-      border:1px solid #E8E8F0; text-align:left; box-shadow:0 2px 10px rgba(20,20,50,.06);
+      position:relative; margin:12px 0; padding:15px 14px; border-radius:20px;
+      background:var(--wc,#FFF); color:var(--wk,#15151F);
+      border:1px solid rgba(20,20,50,.07); text-align:left;
+      box-shadow:0 2px 10px rgba(20,20,50,.08);
     }
-    .wt-card.next{ background:#F2F0FF; border-color:#4B3FD4; }
-    .wt-card.now{ background:#FFF1E6; border-color:#FF6A00; }
+    /* 진행 중 — 폰처럼 오렌지 링으로 또렷하게 세운다 */
+    .wt-card.now{
+      border:2.5px solid #FF6A00;
+      box-shadow:0 0 0 4px rgba(255,106,0,.14), 0 6px 18px rgba(255,106,0,.22);
+    }
+    .wt-card.next{ border:2px solid rgba(75,63,212,.55); box-shadow:0 4px 14px rgba(75,63,212,.16); }
     .wt-badge{
       display:inline-block; font-size:11px; font-weight:800; letter-spacing:.04em;
-      padding:3px 9px; border-radius:9px; margin-bottom:7px;
+      padding:3px 10px; border-radius:10px; margin-bottom:7px;
     }
     .wt-card.next .wt-badge{ background:#4B3FD4; color:#fff; }
     .wt-card.now  .wt-badge{ background:#FF6A00; color:#fff; }
-    .wt-time{ font-size:27px; font-weight:800; line-height:1.1; letter-spacing:-.01em; color:#15151F; }
+    .wt-time{ font-size:27px; font-weight:800; line-height:1.1; letter-spacing:-.01em; color:inherit; }
     .wt-title{ font-size:17.5px; font-weight:800; margin-top:3px; line-height:1.3;
-      word-break:keep-all; color:#15151F; }
-    .wt-memo{ font-size:13px; font-weight:600; color:#5A5A6E; margin-top:6px; line-height:1.5; word-break:keep-all; }
+      word-break:keep-all; color:inherit; }
+    .wt-memo{ font-size:13px; font-weight:600; opacity:.78; margin-top:6px; line-height:1.5; word-break:keep-all; }
+
+    /* 현재 시간 라인 — 폰의 오렌지 라인을 그대로 가져왔다 */
+    .wt-nowline{ position:relative; height:3px; margin:16px 0 14px; background:#FF6A00;
+      border-radius:2px; }
+    .wt-nowline i{
+      position:absolute; left:0; top:-13px; background:#FF6A00; color:#fff;
+      font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; font-style:normal;
+      padding:4px 10px; border-radius:16px; box-shadow:0 3px 10px rgba(255,90,0,.4);
+    }
 
     .wt-items{ display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
+    /* 칩도 카드 색 위에서 읽혀야 한다 — 카드의 글자색을 옅게 깔고 그 위에 올린다 */
     .wt-item{
       font-size:13px; font-weight:800; padding:6px 11px; border-radius:11px;
-      background:#EDEDF4; color:#3A3A4C;
+      background:rgba(255,255,255,.72); color:#2A2A38;
     }
-    .wt-item.ok{ background:#DFF3E7; color:#1E7A50; }
+    .wt-item.ok{ background:rgba(255,255,255,.9); color:#1E7A50; }
     .wt-item.ok::before{ content:'✓ '; }
-    .wt-prep-t{ font-size:11.5px; font-weight:800; color:#8E8EA8; margin-top:11px; letter-spacing:.03em; }
+    .wt-prep-t{ font-size:11.5px; font-weight:800; color:inherit; opacity:.72;
+      margin-top:11px; letter-spacing:.03em; }
 
     .wt-rest{ margin-top:14px; background:#FFF; border-radius:18px; padding:2px 13px;
       border:1px solid #E8E8F0; }
@@ -75,10 +93,12 @@ window.ModWatch = {
       border-top:1px solid #EFEFF5; text-align:left;
     }
     .wt-row:first-child{ border-top:0; }
-    .wt-row b{ font-size:14px; font-weight:800; color:#6E6E86; flex:0 0 52px; font-variant-numeric:tabular-nums; }
+    .wt-row em{ flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:var(--wc,#CFCFDC); }
+    .wt-row b{ font-size:14px; font-weight:800; color:#6E6E86; flex:0 0 50px; font-variant-numeric:tabular-nums; }
     .wt-row span{ font-size:15px; font-weight:700; flex:1; min-width:0; word-break:keep-all; color:#22222E; }
     /* 흐리게 하는 건 "다녀옴" 체크한 것뿐이다 */
     .wt-row.done b, .wt-row.done span{ color:#B0B0C2; text-decoration:line-through; }
+    .wt-row.done em{ opacity:.35; }
     /* 지났는데 아직 체크 안 한 일정 — 또렷하게 두고 시간만 표시를 바꾼다 */
     .wt-row.over b{ color:#C43F00; }
     .wt-row .wt-dot{ flex:0 0 auto; font-size:11px; color:#FF6A00; }
@@ -246,39 +266,54 @@ window.ModWatch = {
     const rows = list.map(e => {
       const done = this._isDone(e.id, vmId);
       const over = !done && this._min(e.e) <= now;      // 지났는데 아직 체크 안 함
+      const col  = (typeof CFILL === 'function') ? CFILL(e.c) : {fill:'#DCC9A2', ink:'#FFFFFF'};
+      const style = `--wc:${col.fill};--wk:${col.ink}`;
       if(e === hero){
         const items = (e.items||[]).map(x =>
           `<span class="wt-item ${App.isPacked&&App.isPacked(e.id,x)?'ok':''}">${esc(x)}</span>`).join('');
-        return `<div class="wt-card ${cur?'now':'next'}">
-          <span class="wt-badge">${cur?'지금':'다음'}</span>
+        return `<div class="wt-card ${cur?'now':'next'}" style="${style}">
+          <span class="wt-badge">${cur?'진행 중':'다음'}</span>
           <div class="wt-time">${esc(this._hhmm(e.s))}</div>
           <div class="wt-title">${esc(e.t)}</div>
           ${e.memo?`<div class="wt-memo">${esc(e.memo)}</div>`:''}
           ${items?`<div class="wt-prep-t">준비물</div><div class="wt-items">${items}</div>`:''}
         </div>`;
       }
-      return `<div class="wt-row ${done?'done':''} ${over?'over':''}">
+      return `<div class="wt-row ${done?'done':''} ${over?'over':''}" style="${style}">
+        <em></em>
         <b>${esc(this._hhmm(e.s))}</b>
         <span>${esc(e.t)}</span>
         ${done?'<i class="wt-ck">✓</i>':((e.items&&e.items.length)?`<i class="wt-dot">🎒</i>`:'')}
       </div>`;
     });
 
-    /* 큰 카드를 기준으로 앞뒤를 묶어 준다 — 순서는 그대로 유지된다 */
+    /* 현재 시간 라인 — 지금 시각이 끼어드는 자리를 찾는다 (폰과 같은 규칙) */
+    const nowAt = (()=>{
+      if(cur) return -1;                                  // 진행 중이면 그 카드가 곧 현재다
+      let i = 0;
+      while(i < list.length && this._min(list[i].s) <= now) i++;
+      return i;                                           // i 번째 앞에 라인을 넣는다
+    })();
+    const nowHTML = `<div class="wt-nowline"><i>${esc(this._hhmm(typeof toStr==='function'?toStr(now):''))}</i></div>`;
+
+    /* 큰 카드와 현재 시간 라인을 기준으로 앞뒤를 묶는다 — 순서는 그대로 */
     const hi = hero ? list.indexOf(hero) : -1;
-    const wrap = (arr, from, to) => {
-      const part = arr.slice(from, to).join('');
-      return part ? `<div class="wt-rest">${part}</div>` : '';
-    };
-    const body = hi < 0
-      ? wrap(rows, 0, rows.length)
-      : wrap(rows, 0, hi) + rows[hi] + wrap(rows, hi+1, rows.length);
+    let out = '';
+    let buf = [];
+    const flush = () => { if(buf.length){ out += `<div class="wt-rest">${buf.join('')}</div>`; buf = []; } };
+    for(let i = 0; i < rows.length; i++){
+      if(i === nowAt){ flush(); out += nowHTML; }
+      if(i === hi){ flush(); out += rows[i]; }
+      else buf.push(rows[i]);
+    }
+    flush();
+    if(nowAt === rows.length) out += nowHTML;             // 하루의 모든 일정이 지난 경우
 
     el.innerHTML = `
       <button class="wt-top ${multi?'tap':''}" id="wtWho">${multi?'<span class="wt-arw">‹</span>':''}${esc(me.emoji||'')} <span class="wt-name">${esc(me.name||'')}</span>${multi?'<span class="wt-arw">›</span>':''}</button>
-      <div class="wt-now">${['일','월','화','수','목','금','토'][App.day]}요일 · ${esc(this._hhmm(typeof toStr==='function'?toStr(now):''))}</div>
+      <div class="wt-now">${['일','월','화','수','목','금','토'][App.day]}요일</div>
       ${this._fresh()?`<div class="wt-fresh ${this._netErr?'err':''}">${esc(this._fresh())}</div>`:''}
-      ${body}
+      ${out}
       <div class="wt-foot">${multi?'이름을 눌러 가족을 바꿔요<br>':''}폰에서 고칠 수 있어요 · 손목에서는 보기만 합니다</div>`;
     this._bindWho(el);
   },
